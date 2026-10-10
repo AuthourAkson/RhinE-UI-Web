@@ -1,0 +1,20 @@
+# ---- 开发用 Chrome 配置（含缓存、cookie，绝不上传）----
+.dev/chrome-profile/
+
+# ---- 演示曲库：含版权音乐，不入库 ----
+# 想用 ?demo=1 自测，请自己往 .dev/music/ 放音频（也可用 .dev/make-fixtures.sh 造测试专辑）
+.dev/music/
+
+# ---- 生成的清单缓存（服务器每次启动会重建）----
+.dev/manifest.json
+
+# ---- 探针/截图产物（可随时重新生成）----
+.dev/*.png
+.dev/tmp-gen/
+
+# ---- 系统与编辑器 ----
+node_modules/
+*.log
+Thumbs.db
+.DS_Store
+desktop.ini

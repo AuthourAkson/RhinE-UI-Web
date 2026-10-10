@@ -1,0 +1,571 @@
+/**
+ * app.js —— 网页版宿主：扮演 Columns UI 的"面板容器"角色
+ *
+ * 原始架构（foobar2000 / Columns UI / JSplitter）：
+ *   Columns UI 按 .fcl 布局创建面板；根面板 frame.js 拿到所有子面板对象，
+ *   自己算布局（regions()）并用 p.Move() / p.Show() 摆位。
+ *
+ * 网页版对应关系：
+ *   Columns UI 面板容器  →  本文件（绝对定位的 iframe 列表）
+ *   子面板               →  <iframe>（各自一份全局作用域）
+ *   根面板 frame.js      →  同样跑在 iframe 里，通过 GetPanelByIndex(i) 拿到父页面里的 PanelObject
+ *   window.NotifyOthers  →  父页面转发（主题发的是 JSON 字符串，天然可跨 frame）
+ */
+const CHILDREN = ['header', 'transport', 'stage', 'manager', 'head', 'playlist', 'card', 'tip', 'fx'];
+
+const PANELS = [];        // PanelObject[]，索引 = frame.js 里 CHILDREN 的顺序
+const BY_ID = new Map();
+const IFRAMES = new Map();
+
+let manifest = null;
+let rootPanel = null;
+
+/* ------------------------------------------------------------------ 工具 -- */
+const $ = (sel) => document.querySelector(sel);
+
+function log(msg) {
+  const el = $('#log');
+  if (el) el.textContent = msg;
+  (window.__ERRORS ||= []).push(msg);
+  console.log(msg);
+}
+
+/* ------------------------------------------------- 面板对象（PanelObject） -- */
+function makePanel(id, title, index) {
+  const frame = document.createElement('iframe');
+  frame.className = 'panel';
+  frame.dataset.id = id;
+  frame.src = '/panel.html';
+  frame.style.cssText = 'position:absolute;left:0;top:0;width:0;height:0;border:0;display:none;visibility:hidden';
+  $('#stage').appendChild(frame);
+
+  const p = {
+    __id: id, __index: index, __frame: frame,
+    Text: title,
+    ShowCaption: false, Locked: true, TopMost: false, Visible: false, IsVisible: false,
+    MinWidth: 0, MaxWidth: 0, MinHeight: 0, MaxHeight: 0, InstanceCount: 1, HideWithParent: true,
+    /* Columns UI 的面板 API → 直接改 iframe 的几何 */
+    Show(on) {
+      p.Visible = p.IsVisible = !!on;
+      frame.style.display = on ? 'block' : 'none';
+      frame.style.visibility = on ? 'visible' : 'hidden';
+    },
+    Move(x, y, w, h) {
+      p.x = x; p.y = y; p.w = w; p.h = h;
+      frame.style.left = x + 'px'; frame.style.top = y + 'px';
+      frame.style.width = w + 'px'; frame.style.height = h + 'px';
+      const win = frame.contentWindow;
+      if (p.__ready && win) win.__rhine && win.__rhine.size(w, h);
+    },
+    Hide() { p.Show(false); },
+    // 网页版没有"面板设置对话框"，这些是主题会调的配置接口
+    GetColourCUI: () => 0, SetColourCUI: () => { }, GetFontCUI: () => null, SetFontCUI: () => { },
+    GetProperty: (n, d) => d, SetProperty: () => { }, NotifyOthers: () => { },
+  };
+  BY_ID.set(id, p);
+  return p;
+}
+
+/* 原生播放列表面板（Columns UI 的 playlist view）在网页版里是 DOM 表格 */
+function makeNativePlaylist(index) {
+  const el = document.createElement('div');
+  el.className = 'panel native-playlist';
+  el.style.cssText = 'position:absolute;left:0;top:0;width:0;height:0;display:none;overflow:hidden';
+  el.innerHTML = '<div class="np-note">原生播放列表（Columns UI Playlist View）<br>网页版待实现 —— 需要媒体库数据层</div>';
+  $('#stage').appendChild(el);
+
+  const p = {
+    __id: 'playlist', __index: index, __el: el, __native: true,
+    Text: 'playlist', ShowCaption: false, Locked: true, TopMost: false, Visible: false, IsVisible: false,
+    InstanceCount: 1,
+    Show(on) { p.Visible = p.IsVisible = !!on; el.style.display = on ? 'block' : 'none'; },
+    Move(x, y, w, h) { el.style.left = x + 'px'; el.style.top = y + 'px'; el.style.width = w + 'px'; el.style.height = h + 'px'; },
+    Hide() { p.Show(false); },
+    GetColourCUI: () => 0, SetColourCUI: () => { }, GetProperty: (n, d) => d, SetProperty: () => { }, NotifyOthers: () => { },
+  };
+  BY_ID.set('playlist', p);
+  return p;
+}
+
+/* ------------------------------------------------------ 跨面板消息总线 -- */
+const BUS = {
+  // 缓存"共享状态"类消息：后启动的面板错过了广播就补发一条
+  // （原因：网页版里所有面板并行启动，而 JSplitter 里根面板是最后启动的，
+  //   于是根面板的第一次 broadcast() 会早于某些子面板就绪 —— 实测 stage 因此停在
+  //   默认 view=playlists，on_paint 里四个视图分支都不匹配，画面全黑）
+  cached: new Map(),
+  post(fromId, name, info) {
+    if (name === 'audio-archive') {
+      try { const m = JSON.parse(info); if (m && m.type === 'state') BUS.cached.set('state', info); } catch (e) { }
+    }
+    for (const [id, frame] of IFRAMES) {
+      if (id === fromId) continue;
+      const win = frame.contentWindow;
+      if (win && win.__rhine) win.__rhine.call('on_notify_data', name, info);
+    }
+  },
+  /** 面板刚就绪：把它错过的共享状态补上 */
+  catchUp(panelId) {
+    const frame = IFRAMES.get(panelId);
+    const win = frame && frame.contentWindow;
+    if (!win || !win.__rhine) return;
+    const info = BUS.cached.get('state');
+    if (info) win.__rhine.call('on_notify_data', 'audio-archive', info);
+  },
+};
+
+/* ------------------------------------------------------------- 启动流程 -- */
+async function preloadFonts() {
+  const faces = [
+    ['Geist Mono Light', 'Light', 300], ['Geist Mono', 'Regular', 400], ['Geist Mono Medium', 'Medium', 500],
+    ['Geist Mono SemiBold', 'SemiBold', 600], ['Geist Mono', 'Bold', 700],
+  ];
+  const jobs = faces.map(async ([family, file, weight]) => {
+    try {
+      const f = new FontFace(family, `url(/themes/audio-archive/assets/fonts/GeistMono-${file}.ttf)`, { weight: String(weight) });
+      document.fonts.add(await f.load());
+    } catch (e) { console.warn('字体加载失败', family, e.message); }
+  });
+  await Promise.all(jobs);
+  await document.fonts.ready;
+  log(`字体就绪：${document.fonts.size} 个 FontFace`);
+}
+
+function bootPanel(p, entry, extra = {}) {
+  const frame = p.__frame;
+  if (!frame) return;
+  IFRAMES.set(p.__id, frame);
+
+  const start = () => {
+    if (p.__started) return;
+    let win;
+    try { win = frame.contentWindow; } catch (e) { return false; }
+    if (!win || typeof win.__boot !== 'function') return false;
+    p.__started = true;
+    try {
+      // 所有面板共享同一份宿主状态对象：播放进度/曲库一改，全体立刻看到
+      win.__RHINE_SHARED__ = SHARED;
+      win.__RHINE_LIBRARY__ = LIB;
+      win.__boot({
+        id: p.__id, entry, manifest, scriptKey: p === rootPanel ? 'frame' : p.__id,
+        w: Math.max(1, p.w || window.innerWidth), h: Math.max(1, p.h || window.innerHeight),
+        globals: Object.assign({ DrawMode: 1 }, extra.globals || {}),
+        region: extra.region || null,
+      });
+    } catch (e) {
+      console.error(`[${p.__id}] boot 抛错`, e);
+      log(`⚠️ ${p.__id} boot 抛错：${e.message}`);
+    }
+    return true;
+  };
+
+  // 面板内异常/就绪上报
+  window.addEventListener('message', (e) => {
+    const m = e.data;
+    if (!m || m.__rhine !== 1 || m.id !== p.__id) return;
+    if (m.type === 'ready') {
+      p.__ready = true;
+      log(`面板就绪：${p.__id}（${m.data.handlers.length} 个回调，${m.data.ms} ms）`);
+      if (p.w) p.Move(p.x, p.y, p.w, p.h);
+      // 补发它错过的共享状态（可能还不止一次：脚本就绪与回调收集之间有时间差）
+      BUS.catchUp(p.__id);
+      setTimeout(() => BUS.catchUp(p.__id), 400);
+    }
+    if (m.type === 'booted') {
+      console.log(`[${p.__id}] 入口已执行`, m.data);
+      if (!m.data.hasOnPaint) log(`⚠️ ${p.__id} 没有 on_paint（on_size=${m.data.hasOnSize}）`);
+    }
+    if (m.type === 'log') console.warn(`[${p.__id}] ${m.data.level}: ${m.data.message}`);
+    if (m.type === 'error') { console.error(`[${p.__id}] ${m.data.phase}:`, m.data.message); log(`⚠️ ${p.__id} ${m.data.phase}: ${String(m.data.message).slice(0, 160)}`); }
+  });
+
+  frame.addEventListener('load', start);
+  // 有些情况下 load 事件早于脚本就绪 / 或已被消费：轮询兜底
+  let tries = 0;
+  const poll = () => {
+    if (p.__started || tries++ > 100) return;
+    if (!start()) setTimeout(poll, 50);
+  };
+  setTimeout(poll, 30);
+}
+
+async function main() {
+  log('读取清单…');
+  manifest = await (await fetch('/__manifest.json')).json();
+  log(`清单：${Object.keys(manifest.text).length} 个文本 / ${Object.keys(manifest.images).length} 张图尺寸`);
+  await preloadFonts();
+
+  // 1) 子面板（顺序必须与 frame.js 的 CHILDREN 一致）
+  CHILDREN.forEach((name, i) => {
+    const p = name === 'playlist' ? makeNativePlaylist(i) : makePanel(name, name, i);
+    // 子面板一律在根面板之上（根面板只负责露出的缝隙）；fx 最后 → 在最上层
+    const layer = String(i + 1);
+    if (p.__frame) p.__frame.style.zIndex = layer;
+    else p.__el.style.zIndex = layer;
+    PANELS.push(p);
+  });
+
+  // 2) 根面板（frame.js）：它才是布局的主人，放在最底层
+  rootPanel = makePanel('root', 'settings', PANELS.length);
+  rootPanel.__frame.style.zIndex = '0';
+  rootPanel.Move(0, 0, window.innerWidth, window.innerHeight);
+  rootPanel.Show(true);
+  PANELS.push(rootPanel);
+
+  // 父页面暴露给 shim 的面板表（GetPanelCount / GetPanelByIndex 用）
+  window.__PANELS__ = PANELS;
+  window.__RHINE_BUS__ = BUS;
+
+  // 3) 恢复「启动即播开场影片」的原版行为
+  //    说明：素材未移植时我曾写入 bootSelfTest=false 关掉它（那是**持久化**的，所以这里要显式清掉）。
+  //    只迁移一次：之后用户在 菜单 › Audio Archive 里关掉开场动画的选择会被尊重。
+  try {
+    if (!localStorage.getItem('rhine:intro-default-restored')) {
+      localStorage.removeItem('rhine:prop:root:bootSelfTest');
+      const sf = 'rhine:file:audio-archive-settings.json';
+      const raw = localStorage.getItem(sf);
+      if (raw) {
+        try {
+          const o = JSON.parse(raw);
+          if (o && o.bootSelfTest === false) { delete o.bootSelfTest; localStorage.setItem(sf, JSON.stringify(o)); }
+        } catch (e) { }
+      }
+      localStorage.setItem('rhine:intro-default-restored', '1');
+      console.log('[迁移] 已恢复开场动画默认开启（清除之前写入的 bootSelfTest=false）');
+    }
+  } catch (e) { }
+
+  // 4) 逐面板启动
+  const ENTRY = (n) => `themes/audio-archive/js/${n}.js`;
+  for (const p of PANELS) {
+    if (p.__native) continue;
+    const entry = p === rootPanel ? ENTRY('frame') : ENTRY(p.__id);
+    bootPanel(p, entry);
+  }
+  // 原生播放列表没有脚本，但要在父页面里注册好（frame.js 会 Move/Show 它）
+
+  window.addEventListener('resize', () => {
+    rootPanel.Move(0, 0, window.innerWidth, window.innerHeight);
+    const win = rootPanel.__frame.contentWindow;
+    if (win && win.__rhine) win.__rhine.size(window.innerWidth, window.innerHeight);
+  });
+
+  // 拾取器按钮 + 快捷键（Ctrl+Alt+P）。Alt+点击在任何时候都能直接拾取，不必先开模式
+  const pb = $('#pick-btn');
+  if (pb) pb.addEventListener('click', () => setPicking(!picking));
+  window.addEventListener('keydown', (e) => {
+    if (e.ctrlKey && e.altKey && (e.key === 'p' || e.key === 'P')) { e.preventDefault(); setPicking(!picking); }
+  });
+
+  log('已启动 —— frame.js 正在计算布局');
+
+  // 5) 曲库：?demo=1 走开发服务器的 HTTP 曲库（自测用）；否则等用户点「+ ADD MUSIC FOLDER」
+  if (new URLSearchParams(location.search).has('demo')) {
+    setTimeout(() => loadHttpLibrary().catch((e) => log('加载演示曲库失败：' + e.message)), 1200);
+  }
+}
+
+// shim 里 HOST.command（fb.RunMainMenuCommand / 主题菜单动作）的落地实现
+/* ============================================================ 媒体库与播放 == */
+/**
+ * 网页版的"媒体库"有两个提供器：
+ *   fs    —— File System Access API（真实用法：点「+ ADD MUSIC FOLDER」选目录）
+ *   http  —— 开发/自测用（?demo=1）：从开发服务器 /__music.json 读 .dev/music 下的素材，
+ *            因为无头浏览器点不了原生目录对话框
+ * 两者都产出同一种 files 数组：[{ path, url } | { path, file }]
+ * path 必须是 **Windows 反斜杠**形式 —— 主题的 albumKeyOf()/albumDir() 按 "\\" 切分组专辑，
+ * 用正斜杠会把同一张专辑拆成多个 key、货架上就散了。
+ */
+const LIB = { files: [], source: null, tracks: [], playlists: [], activePlaylist: -1, focus: -1, playing: { playlist: -1, item: -1 }, albums: [], ready: false };
+
+const SHARED = { transport: { playing: false, paused: false, time: 0, length: 0, volume: -10 } };
+const audio = new Audio();
+audio.preload = 'metadata';
+
+/** 把宿主状态推给所有面板（同一个对象，播放进度自动同步） */
+function pushShared() {
+  for (const p of PANELS) {
+    const w = p.__frame && p.__frame.contentWindow;
+    if (!w) continue;
+    w.__RHINE_SHARED__ = SHARED;
+    w.__RHINE_LIBRARY__ = LIB;
+  }
+}
+
+/* ------------------------------------------------------- 布局元素拾取器 --
+ * 这个 UI 没有可选的 DOM 元素（每个面板只有一个 canvas，按钮都是画上去的），
+ * 所以 DevTools 的选取箭头选不到里面的按钮。拾取器补上这一步：
+ *   按住 Alt 点击画面，或点 HUD 上的「拾取元素」按钮后直接点击，
+ * 就会在 HUD 和控制台打印一行"面板 / 面板内坐标 / 主题命中区 id / 该像素颜色"，
+ * 同时写进剪贴板 —— 把那一行发给我，我就知道你说的是哪块布局了。
+ */
+let picking = false;
+const PICK_LOG = [];      // 最近 20 条拾取记录（控制台里 PICK_LOG 可查）
+window.PICK_LOG = PICK_LOG;
+window.__RHINE_PICK__ = (info) => {
+  const p = PANELS.find((x) => x.__id === info.panel || x.id === info.panel);
+  const w = p && p.__frame && p.__frame.contentWindow;
+  let hit = '（画布像素，无命名命中区）', view = '?', extra = '', size = '?', frac = '', near = '';
+  if (w) {
+    try { view = w.eval('typeof STATE !== "undefined" ? STATE.view : "?"'); } catch (e) { }
+    try {
+      size = w.eval('typeof W !== "undefined" ? W + "x" + H : "?"');
+      const [pw, ph] = String(size).split('x').map(Number);
+      if (pw && ph) frac = `相对位置=${(info.x / pw * 100).toFixed(1)}%,${(info.y / ph * 100).toFixed(1)}%`;
+    } catch (e) { }
+    try {
+      hit = w.eval(`(function(){ try { const a = hits.at(${info.x}, ${info.y}); return a ? (a.id + (a.data !== undefined ? " data=" + JSON.stringify(a.data) : "")) : "（画布像素，无命名命中区）"; } catch(e) { return "（此面板没有 hits）"; } })()`);
+    } catch (e) { hit = '（读取失败）'; }
+    // 拾取点附近有哪些命名命中区（±70px）—— 纯文字/图标也能对应到所属按钮
+    try {
+      const raw = w.eval(`(function(){
+        try {
+          const seen = new Map();
+          for (let dy = -70; dy <= 70; dy += 6) for (let dx = -70; dx <= 70; dx += 6) {
+            const a = hits.at(${info.x} + dx, ${info.y} + dy);
+            if (!a) continue;
+            const k = a.id + "|" + JSON.stringify(a.data);
+            const d = Math.max(Math.abs(dx), Math.abs(dy));
+            const r = (a.x + Math.round(a.w / 2)) + "," + (a.y + Math.round(a.h / 2));
+            if (!seen.has(k) || seen.get(k).d > d) seen.set(k, { d, r });
+          }
+          return JSON.stringify([...seen.entries()].map(([k, v]) => k.replace("|", " data=") + " 中心≈" + v.r + " 距" + v.d + "px").slice(0, 3));
+        } catch (e) { return "[]"; }
+      })()`);
+      const arr = JSON.parse(raw || '[]');
+      if (arr.length) near = ' 附近: ' + arr.join(' / ');
+    } catch (e) { }
+    // 拾取点是不是某个专辑外壳？
+    try {
+      extra = w.eval(`(function(){ try { if (typeof AR === "undefined" || !AR.hits) return ""; for (const h of AR.hits) { const q = h.quad; let inside = false; for (let i = 0, j = q.length - 1; i < q.length; j = i++) { const [xi, yi] = q[i], [xj, yj] = q[j]; if ((yi > ${info.y}) !== (yj > ${info.y}) && ${info.x} < (xj - xi) * (${info.y} - yi) / (yj - yi) + xi) inside = !inside; } if (inside) return "  ← 专辑外壳 #" + h.i; } return ""; } catch(e) { return ""; } })()`);
+    } catch (e) { }
+  }
+  const line = `【拾取】面板=${info.panel}(${size}) 视图=${view} ${frac} 坐标=${info.x},${info.y} 命中=${hit} 像素=${info.px}`
+    + ` | 画布=${info.canvas || '?'} css=${info.css || '?'} dpr=${info.dpr || '?'} 面板CSS=${info.frame || '?'} 主题WH=${info.logW || '?'}`
+    + `${near}${extra}`;
+  window.__RHINE_LAST_PICK__ = line;      // 供测试读取（HUD 里的行会被后续日志顶掉）
+  PICK_LOG.push(line); if (PICK_LOG.length > 20) PICK_LOG.shift();
+  log(line);
+  console.log(line);
+  try { navigator.clipboard.writeText(line); } catch (e) { }
+};
+
+function setPicking(on) {
+  picking = on;
+  for (const p of PANELS) {
+    const w = p.__frame && p.__frame.contentWindow;
+    try { if (w && w.__rhineSetPicking) w.__rhineSetPicking(on); } catch (e) { }
+  }
+  const b = $('#pick-btn');
+  if (b) b.classList.toggle('on', on);
+  log(on ? '拾取模式已开：点画面上任意位置（或按住 Alt 点击），结果会打印并复制到剪贴板' : '拾取模式已关');
+}
+
+/** 调试句柄：给 .dev/ 下的探针用（也方便你在控制台里手动试） */
+window.__RHINE_DEBUG__ = { LIB, SHARED, audio, playIndex, nextTrack, loadHttpLibrary, loadFsLibrary, emit, pushShared };
+
+/** 曲库就绪：让主题重新索引（等价于 foobar2000 的"媒体库加载完成"） */
+function libraryLoaded(fileCount) {
+  LIB.ready = true;
+  pushShared();
+  log(`媒体库就绪：${fileCount} 个文件（来源 ${LIB.source}）→ 通知面板重新索引`);
+  for (const p of PANELS) {
+    const w = p.__frame && p.__frame.contentWindow;
+    if (!w || !w.__rhine) continue;
+    // 放行排队中的索引请求；已经放行过的面板就不必再触发"媒体库加曲目"了（否则曲库会被解析两遍）
+    const flushed = w.__rhine.libraryReady();
+    if (!flushed) w.__rhine.call('on_library_items_added');
+  }
+}
+
+/** worker 解析完曲库后回调（由 shim 的 Worker 桥转发） */
+window.__RHINE_ON_CATALOG__ = (m) => {
+  LIB.tracks = (m.items || []).map((t) => ({
+    title: t.title, artist: t.artist, album: t.albumTitle, albumArtist: t.artist,
+    genre: t.genre, year: t.year, codec: t.codec, bits: t.bits, rate: t.rate, kbps: t.kbps,
+    lossless: t.lossless, length: t.length, disc: 1, track: (t.ord || 0) % 1000, plays: t.plays || 0,
+    path: t.__src ? t.__src.path : '', url: t.__src ? t.__src.url : null, file: t.__src ? t.__src.file : null,
+    size: t.__src ? t.__src.size || 0 : 0, albumKey: t.album,
+  }));
+  LIB.playlists = [{ name: 'Default Playlist', items: LIB.tracks.map((_, i) => i) }];
+  LIB.activePlaylist = 0; LIB.focus = -1; LIB.focusPlaylist = -1;
+  LIB.playing = { playlist: -1, item: -1 };
+  LIB.albums = m.albums || [];
+  pushShared();
+  log(`曲库解析完成：${m.tracks} 首 / ${LIB.albums.length} 张专辑（解析 ${Math.round(m.ms.index)} ms）`);
+  // ⚠️ 这里**绝对不能**触发 on_library_items_changed / on_library_items_added：
+  //    主题的 lib/library.js 把这两个回调接到 libChanged() → 1.5 秒后重新发 index 请求，
+  //    于是变成 "catalog → 通知 → 重新索引 → catalog …" 的无限循环
+  //    （实测控制台刷到 gen=24 还在涨，档案视图也跟着一直重排、闪烁）。
+  //    只广播"播放列表变了"（主题在 source === "library" 时对它是 no-op）+ 重绘即可。
+  for (const p of PANELS) {
+    const w = p.__frame && p.__frame.contentWindow;
+    if (w && w.__rhine) { w.__rhine.call('on_playlists_changed'); w.__rhine.repaint(); }
+  }
+};
+
+async function loadHttpLibrary() {
+  const list = await (await fetch('/__music.json')).json();
+  LIB.files = list; LIB.source = 'http';
+  log(`HTTP 曲库：${list.length} 个文件`);
+  if (list.length) libraryLoaded(list.length); else log('（/.dev/music 里没有音频素材）');
+}
+
+async function loadFsLibrary() {
+  if (!window.showDirectoryPicker) { log('此浏览器不支持 File System Access API，请用 Chrome/Edge'); return; }
+  let dir;
+  try { dir = await window.showDirectoryPicker({ id: 'rhine-music', mode: 'read' }); }
+  catch (e) { log('已取消选择目录'); return; }
+  const rootName = dir.name || 'Music';
+  const files = [];
+  const walk = async (handle, prefix) => {
+    for await (const [name, ent] of handle.entries()) {
+      const p = prefix + '\\' + name;
+      if (ent.kind === 'directory') await walk(ent, p);
+      else if (/\.(mp3|flac|m4a|ogg|oga|opus|wav|aac)$/i.test(name)) files.push({ path: 'D:\\' + rootName + p, file: await ent.getFile() });
+    }
+  };
+  log('正在扫描目录…');
+  await walk(dir, '');
+  LIB.files = files; LIB.source = 'fs';
+  log(`扫描完成：${files.length} 个音频文件`);
+  if (files.length) libraryLoaded(files.length);
+}
+
+/* ------------------------------------------------------------------- 播放 -- */
+function trackSrc(i) {
+  const t = LIB.tracks[i];
+  if (!t) return null;
+  if (t.url) return t.url;
+  if (t.file) { if (!t.__objUrl) t.__objUrl = URL.createObjectURL(t.file); return t.__objUrl; }
+  return null;
+}
+
+function emit(evt, arg) {
+  for (const p of PANELS) {
+    const w = p.__frame && p.__frame.contentWindow;
+    if (w && w.__rhine) w.__rhine.transport(evt, arg);
+  }
+}
+
+function playIndex(i) {
+  const src = trackSrc(i);
+  if (!src) { log(`第 ${i + 1} 首没有可播放来源`); return; }
+  const fresh = LIB.playing.item !== i;
+  LIB.playing = { playlist: LIB.activePlaylist >= 0 ? LIB.activePlaylist : 0, item: i };
+  LIB.focus = i; LIB.focusPlaylist = LIB.activePlaylist;
+  audio.src = src;
+  audio.volume = Math.pow(10, (SHARED.transport.volume || -10) / 20);
+  audio.play().then(() => {
+    SHARED.transport.playing = true; SHARED.transport.paused = false;
+    pushShared();
+    emit(fresh ? 'on_playback_new_track' : 'on_playback_starting');
+    log(`播放：${LIB.tracks[i].title || LIB.tracks[i].path}`);
+  }).catch((e) => log(`播放失败：${e.message}（浏览器可能不支持该格式）`));
+}
+
+function nextTrack(d) {
+  const pl = LIB.playlists[LIB.activePlaylist >= 0 ? LIB.activePlaylist : 0];
+  if (!pl || !pl.items.length) return;
+  let at = pl.items.indexOf(LIB.playing.item);
+  at = at < 0 ? (d > 0 ? 0 : pl.items.length - 1) : (at + d + pl.items.length) % pl.items.length;
+  playIndex(pl.items[at]);
+}
+
+audio.addEventListener('loadedmetadata', () => { SHARED.transport.length = audio.duration || 0; pushShared(); emit('on_playback_new_track'); });
+audio.addEventListener('play', () => { SHARED.transport.playing = true; SHARED.transport.paused = false; pushShared(); emit('on_playback_starting'); });
+audio.addEventListener('pause', () => { SHARED.transport.playing = false; SHARED.transport.paused = true; pushShared(); emit('on_playback_pause', true); });
+audio.addEventListener('ended', () => { SHARED.transport.playing = false; pushShared(); emit('on_playback_stop', 0); nextTrack(1); });
+audio.addEventListener('timeupdate', () => { SHARED.transport.time = audio.currentTime; pushShared(); });
+setInterval(() => { if (!audio.paused) emit('on_playback_time', Math.floor(audio.currentTime)); }, 1000);
+
+let currentMode = 'dark';
+let currentScheme = 'archive';
+
+/** 把"配色集"（scheme + mode）应用给所有面板 —— 等价于原版导入 .fcl 后主题重读 Columns UI 颜色 */
+function applyLook(patch) {
+  if (patch.scheme) currentScheme = patch.scheme;
+  if (patch.mode === 'light' || patch.mode === 'dark') currentMode = patch.mode;
+  for (const p of PANELS) {
+    const w = p.__frame && p.__frame.contentWindow;
+    try { if (w && w.__rhine && w.__rhine.setLook) w.__rhine.setLook({ scheme: currentScheme, mode: currentMode }); } catch (e) { }
+  }
+}
+
+window.__RHINE_CMD__ = (cmd) => {
+  cmd = String(cmd || '');
+  if (cmd.startsWith('mode:')) {
+    const what = cmd.slice(5);
+    let mode;
+    if (/light/i.test(what)) mode = 'light';
+    else if (/dark/i.test(what)) mode = 'dark';
+    else if (/system/i.test(what)) mode = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    else mode = currentMode === 'dark' ? 'light' : 'dark';          // "Switch to other mode"
+    applyLook({ mode });
+    log(`模式切换 → ${mode}`);
+    return;
+  }
+  // 配色方案 / 预设导入（原版：restart foobar2000 with /columnsui:import-quiet <fcl>）
+  if (cmd.startsWith('import:')) {
+    let req = {};
+    try { req = JSON.parse(cmd.slice(7)); } catch (e) { }
+    applyLook({ scheme: req.scheme, mode: req.mode });
+    log(`配色方案 → ${req.scheme}（${req.mode}）`);
+    return;
+  }
+  if (cmd === 'add-music') { loadFsLibrary(); return; }
+  // 播放与播放列表（主题的 fb.PlayOrPause / plman.ActivePlaylist = … 都落到这里）
+  if (cmd === 'toggle') { if (audio.paused) { if (LIB.playing.item < 0 && LIB.tracks.length) playIndex(0); else audio.play().catch(() => { }); } else audio.pause(); return; }
+  if (cmd === 'play') { audio.play().catch(() => { }); return; }
+  if (cmd === 'pause') { audio.pause(); return; }
+  if (cmd === 'stop') { audio.pause(); audio.currentTime = 0; SHARED.transport.playing = false; SHARED.transport.paused = false; SHARED.transport.time = 0; pushShared(); emit('on_playback_stop', 1); return; }
+  if (cmd === 'next') { nextTrack(1); return; }
+  if (cmd === 'prev' || cmd === 'previous') { nextTrack(-1); return; }
+  if (cmd.startsWith('volume:')) {
+    const v = Number(cmd.slice(7));
+    SHARED.transport.volume = v;
+    audio.volume = Math.min(1, Math.max(0, Math.pow(10, v / 20)));
+    pushShared(); emit('on_volume_change', v); return;
+  }
+  if (cmd === 'vol-up') { window.__RHINE_CMD__(`volume:${Math.min(0, (SHARED.transport.volume || -10) + 1)}`); return; }
+  if (cmd === 'vol-down') { window.__RHINE_CMD__(`volume:${Math.max(-100, (SHARED.transport.volume || -10) - 1)}`); return; }
+  if (cmd.startsWith('play:')) { const [, p, i] = cmd.split(':'); LIB.activePlaylist = Number(p); LIB.playlists[Number(p)] = LIB.playlists[Number(p)] || { name: 'Playlist', items: [] }; playIndex((LIB.playlists[Number(p)].items || [])[Number(i)] ?? Number(i)); return; }
+  if (cmd.startsWith('focus:')) { const [, p, i] = cmd.split(':'); LIB.focusPlaylist = Number(p); LIB.focus = ((LIB.playlists[Number(p)] || {}).items || [])[Number(i)] ?? -1; pushShared(); emit('on_item_focus_change'); return; }
+  if (cmd.startsWith('active-playlist:')) {
+    LIB.activePlaylist = Number(cmd.slice(16));
+    pushShared(); emit('on_playlist_switch'); emit('on_playlists_changed');
+    for (const p of PANELS) { const w = p.__frame && p.__frame.contentWindow; if (w && w.__rhine) w.__rhine.repaint(); }
+    return;
+  }
+  // 播放列表编辑（主题 playAlbum() 的链路：CreatePlaylist → ClearPlaylist → InsertPlaylistItems，
+  // 全部同步执行并返回结果，shim 的 plman.* 依赖这些返回值）
+  if (cmd.startsWith('create-playlist:')) {
+    // create-playlist:<at>:<name>
+    const rest = cmd.slice(17), sep = rest.indexOf(':');
+    const at = Number(rest.slice(0, sep)), name = rest.slice(sep + 1) || 'Playlist';
+    const pos = Number.isFinite(at) && at >= 0 && at <= LIB.playlists.length ? at : LIB.playlists.length;
+    LIB.playlists.splice(pos, 0, { name, items: [] });
+    pushShared(); emit('on_playlists_changed');
+    return pos;   // 新播放列表的下标（CreatePlaylist 的返回值）
+  }
+  if (cmd.startsWith('clear-playlist:')) {
+    const p = Number(cmd.slice(15));
+    if (LIB.playlists[p]) LIB.playlists[p].items = [];
+    pushShared(); emit('on_playlist_items_changed'); emit('on_playlists_changed');
+    return true;
+  }
+  if (cmd.startsWith('insert-playlist:')) {
+    // insert-playlist:<p>:<at>:<逗号分隔的曲目索引>
+    const [, p, at, ids] = cmd.split(':');
+    const pl = LIB.playlists[Number(p)] = LIB.playlists[Number(p)] || { name: 'Playlist', items: [] };
+    const add = String(ids || '').split(',').map(Number).filter((n) => Number.isFinite(n) && n >= 0 && n < LIB.tracks.length);
+    pl.items.splice(Number(at) || 0, 0, ...add);
+    pushShared(); emit('on_playlist_items_changed'); emit('on_playlists_changed');
+    return true;
+  }
+  console.log('宿主命令（暂未实现）:', cmd);
+};
+
+// shim 里 HOST.other / HOST.command 的转发入口（iframe 通过 parent.__RHINE_BUS__ 调用）
+window.__RHINE_ONREADY__ = main;
+main().catch((e) => { console.error(e); log('启动失败：' + e.message); });

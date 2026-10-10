@@ -1,0 +1,1043 @@
+/**
+ * shim.js —— JSplitter → 浏览器 适配层（运行在每个面板 iframe 内）
+ *
+ * 目标：让主题原封不动的 JS（js/*.js、js/lib/*.js）在浏览器里跑起来。
+ * 每个面板一个 iframe ＝ JSplitter 里的一个子面板，各自一份全局作用域。
+ *
+ * 必须解决的三个"同步 API"问题（浏览器天生做不到的四件事）：
+ *   1) include(path)          —— 主题在顶层同步加载模块 → 用**间接 eval**注入该 iframe 的全局词法作用域
+ *   2) utils.ReadTextFile()   —— 同步读文本 → 服务器清单已内联全部 js/json，直接查表
+ *   3) d2d.Image().Width      —— 同步拿图片尺寸 → 服务器清单已扫描 PNG/JPEG 文件头，像素再异步加载
+ *   4) utils.LoadFont()       —— 同步装字体 → 父页面在启动前把 5 个 Geist Mono 全部 await 加载完
+ */
+(function () {
+  'use strict';
+
+  /* ==================================================== 早期错误捕获 -- */
+  // 面板脚本的异常必须让父页面看见（否则只会沉在 iframe 控制台里）
+  let BOOT_CFG = null;
+  function rawReport(type, data) {
+    try { parent.postMessage({ __rhine: 1, id: (BOOT_CFG && BOOT_CFG.id) || 'unknown', type, data }, '*'); }
+    catch (e) { /* ignore */ }
+  }
+  window.onerror = function (msg, src, line, col, err) {
+    rawReport('error', { phase: 'window.onerror', message: `${msg} @${String(src).split('/').pop()}:${line}:${col}`, stack: err && err.stack });
+    return false;
+  };
+  window.addEventListener('unhandledrejection', (e) => {
+    rawReport('error', { phase: 'unhandledrejection', message: String(e.reason && e.reason.stack || e.reason) });
+  });
+  const origError = console.error.bind(console);
+  console.error = function (...args) {
+    origError(...args);
+    rawReport('log', { level: 'error', message: args.map((a) => (a && a.stack) || String(a)).join(' ').slice(0, 600) });
+  };
+
+  /* ============================================================ 常量 / 工具 -- */
+
+  const DT = {
+    LEFT: 0x00000000, CENTER: 0x00000001, RIGHT: 0x00000002, VCENTER: 0x00000004,
+    WORDBREAK: 0x00000010, SINGLELINE: 0x00000020, NOPREFIX: 0x00000800,
+    ENDELLIPSIS: 0x00008000, PATH_ELLIPSIS: 0x00004000, WORD_ELLIPSIS: 0x00008000,
+  };
+  const MK = { LBUTTON: 0x0001, RBUTTON: 0x0002, SHIFT: 0x0004, CONTROL: 0x0008, MBUTTON: 0x0010 };
+
+  const toCss = (c) => `rgba(${(c >>> 16) & 255},${(c >>> 8) & 255},${c & 255},${(((c >>> 24) & 255) / 255).toFixed(4)})`;
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const norm = (p) => String(p == null ? '' : p).replace(/\\/g, '/').replace(/^\/+/, '');
+
+  let CFG = null, MANIFEST = null, CANVAS = null, CTX = null, DPR = 1;
+  // 版本标记：面板里跑的是哪一版 shim，一查就知道（排查缓存问题用）
+  window.__RHINE_SHIM__ = 'v5-picker';
+  // ⚠️ 必须在覆盖 window.Worker 之前抓住原生构造函数：
+  //    下面的桥会把 window.Worker 换成自己的实现，若桥内部再写 `new Worker(...)` 就会无限递归
+  //    （实测报 RangeError: Maximum call stack size exceeded）
+  const NativeWorker = window.Worker;
+  let W = 0, H = 0, dirty = true, dirtyAll = true, rafPending = false;
+  const timers = new Map();
+  const imageCache = new Map();
+  let HANDLERS = {};
+
+  /** ImageBitmap → 本 shim 的图片句柄（Canvas2D 的 drawImage 直接接受 ImageBitmap） */
+  function bitmapHandle(bmp) {
+    if (!bmp) return null;
+    return { __el: bmp, __ready: true, __image: true, __bitmap: true, Width: bmp.width, Height: bmp.height };
+  }
+
+  const workingWorkers = [];   // 本面板创建的库 worker（供 libraryReady() 冲掉排队的索引请求）
+
+  /* ============================================================== 绘制对象 -- */
+
+  function makeGr(ctx, owner) {
+    const stack = [];
+    const g = {
+      /* --- 填充 / 描边 --- */
+      FillSolidRect(x, y, w, h, colour) {
+        ctx.fillStyle = toCss(colour >>> 0);
+        ctx.fillRect(x, y, w, h);
+      },
+      DrawRect(x, y, w, h, lineWidth, colour) {
+        ctx.strokeStyle = toCss(colour >>> 0); ctx.lineWidth = lineWidth || 1;
+        ctx.strokeRect(x + lineWidth / 2, y + lineWidth / 2, w - lineWidth, h - lineWidth);
+      },
+      DrawLine(x1, y1, x2, y2, lineWidth, colour) {
+        ctx.strokeStyle = toCss(colour >>> 0); ctx.lineWidth = lineWidth || 1;
+        ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+      },
+      DrawLines(points, lineWidth, colour) {
+        if (!points || points.length < 4) return;
+        ctx.strokeStyle = toCss(colour >>> 0); ctx.lineWidth = lineWidth || 1;
+        ctx.beginPath(); ctx.moveTo(points[0], points[1]);
+        for (let i = 2; i + 1 < points.length; i += 2) ctx.lineTo(points[i], points[i + 1]);
+        ctx.stroke();
+      },
+      FillPolygon(colour, fillMode, points) {
+        if (!points || points.length < 6) return;
+        ctx.fillStyle = toCss(colour >>> 0);
+        ctx.beginPath(); ctx.moveTo(points[0], points[1]);
+        for (let i = 2; i + 1 < points.length; i += 2) ctx.lineTo(points[i], points[i + 1]);
+        ctx.closePath(); ctx.fill(fillMode === 1 ? 'evenodd' : 'nonzero');
+      },
+      DrawPolygon(colour, lineWidth, points) {
+        if (!points || points.length < 6) return;
+        ctx.strokeStyle = toCss(colour >>> 0); ctx.lineWidth = lineWidth || 1;
+        ctx.beginPath(); ctx.moveTo(points[0], points[1]);
+        for (let i = 2; i + 1 < points.length; i += 2) ctx.lineTo(points[i], points[i + 1]);
+        ctx.closePath(); ctx.stroke();
+      },
+      FillEllipse(x, y, w, h, colour) {
+        ctx.fillStyle = toCss(colour >>> 0);
+        ctx.beginPath(); ctx.ellipse(x + w / 2, y + h / 2, Math.abs(w) / 2, Math.abs(h) / 2, 0, 0, Math.PI * 2); ctx.fill();
+      },
+      DrawEllipse(x, y, w, h, lineWidth, colour) {
+        ctx.strokeStyle = toCss(colour >>> 0); ctx.lineWidth = lineWidth || 1;
+        ctx.beginPath(); ctx.ellipse(x + w / 2, y + h / 2, Math.abs(w) / 2 - lineWidth / 2, Math.abs(h) / 2 - lineWidth / 2, 0, 0, Math.PI * 2); ctx.stroke();
+      },
+      FillGradRect(x, y, w, h, angleDeg, c1, c2, focus) {
+        // Direct2D 的 angle 从 +x 轴逆时针；Canvas 的 createLinearGradient 用两点
+        const a = (angleDeg || 0) * Math.PI / 180;
+        const cx = x + w / 2, cy = y + h / 2, r = Math.max(w, h);
+        const dx = Math.cos(a) * r / 2, dy = -Math.sin(a) * r / 2;
+        const grad = ctx.createLinearGradient(cx - dx, cy - dy, cx + dx, cy + dy);
+        grad.addColorStop(0, toCss(c1 >>> 0));
+        grad.addColorStop(focus != null ? clamp(focus, 0, 1) : 1, toCss(c2 >>> 0));
+        ctx.fillStyle = grad; ctx.fillRect(x, y, w, h);
+      },
+
+      /* --- 文字 --- */
+      DrawText(text, font, colour, x, y, w, h, flags) {
+        drawTextImpl(ctx, String(text), font, colour, x, y, w, h, flags, false);
+      },
+      DrawStrokedText(text, font, colour, strokeWidth, x, y, w, h, flags) {
+        drawTextImpl(ctx, String(text), font, colour, x, y, w, h, flags, strokeWidth || 1);
+      },
+      CalcTextWidth(text, font, fromZero) {
+        ctx.save(); ctx.font = font.Css; const m = ctx.measureText(String(text)); ctx.restore();
+        // fromZero=true 时主题要的是"最左到最右"的实宽（不带两边留白）
+        return fromZero ? (m.actualBoundingBoxLeft + m.actualBoundingBoxRight || m.width) : m.width;
+      },
+      CalcTextHeight(text, font) {
+        ctx.save(); ctx.font = font.Css; const m = ctx.measureText(String(text)); ctx.restore();
+        return (m.actualBoundingBoxAscent + m.actualBoundingBoxDescent) || font.Height;
+      },
+      EstimateLineWrap(text, font, maxWidth) {
+        ctx.save(); ctx.font = font.Css;
+        const words = String(text).split(/(\s+)/);
+        const out = []; let line = '';
+        for (const word of words) {
+          const t = line + word;
+          if (line && ctx.measureText(t).width > maxWidth) { out.push(line.replace(/\s+$/, ''), ctx.measureText(line.replace(/\s+$/, '')).width); line = word.replace(/^\s+/, ''); }
+          else line = t;
+        }
+        if (line) out.push(line, ctx.measureText(line).width);
+        ctx.restore();
+        return out;
+      },
+
+      /* --- 图像 --- */
+      DrawImage(img, dx, dy, dw, dh, sx, sy, sw, sh, angle, alpha) {
+        const el = img && img.__el ? img.__el : img;
+        if (!el || !img.__ready) return;
+        const prevAlpha = ctx.globalAlpha;
+        if (alpha != null) ctx.globalAlpha = prevAlpha * clamp(alpha, 0, 1);
+        ctx.save();
+        if (angle) {   // D2D 的角度是"弧度"（正数顺时针），绕目标矩形中心
+          ctx.translate(dx + dw / 2, dy + dh / 2); ctx.rotate(angle); ctx.translate(-dw / 2, -dh / 2);
+          ctx.drawImage(el, sx || 0, sy || 0, sw || img.Width, sh || img.Height, 0, 0, dw, dh);
+        } else {
+          ctx.drawImage(el, sx || 0, sy || 0, sw || img.Width, sh || img.Height, dx, dy, dw, dh);
+        }
+        ctx.restore();
+        ctx.globalAlpha = prevAlpha;
+      },
+      DrawEffect(fx, x, y, w, h, srcW, srcH) {
+        if (!fx || !fx.__input || !fx.__input.__ready) return;
+        ctx.save();
+        if (fx.__css) ctx.filter = fx.__css;
+        const dw = w || srcW || fx.__input.Width, dh = h || srcH || fx.__input.Height;
+        ctx.drawImage(fx.__input.__el, 0, 0, fx.__input.Width, fx.__input.Height, x, y, dw, dh);
+        ctx.restore();
+      },
+
+      /* --- 裁剪 / 变换 --- */
+      // ⚠️ Canvas2D 的裁剪区不能靠 setTransform 撤销，必须用 save()/restore()。
+      // 之前只回滚变换，导致 PopClip 之后裁剪仍在生效——实测症状是"徽标能画出来、但同一面板里
+      // 裁剪区之外的文字全都不显示"（header 用 PushClip 把徽标裁在白色底板内）。
+      PushClip(x, y, w, h) { ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip(); stack.push(1); },
+      PopClip() { if (stack.length) { stack.pop(); ctx.restore(); } },
+      PushTransform(m) { ctx.save(); if (m) applyMatrix(ctx, m); stack.push(1); },
+      PopTransform() { if (stack.length) { stack.pop(); ctx.restore(); } },
+      SetTransform(m) { ctx.setTransform(1, 0, 0, 1, 0, 0); applyMatrix(ctx, m); },
+      ResetTransform() { ctx.setTransform(1, 0, 0, 1, 0, 0); },
+      Translate(x, y) { ctx.translate(x, y); },
+      Scale(sx, sy, cx, cy) { if (cx != null) ctx.translate(cx, cy); ctx.scale(sx, sy); if (cx != null) ctx.translate(-cx, -cy); },
+      SetSmoothingMode(m) { ctx.imageSmoothingEnabled = m !== 0; },
+      SetInterpolationMode() { },
+      SetTextRenderingHint() { },
+      SetCompositingMode(m) { ctx.globalCompositeOperation = m === 1 ? 'source-copy' : 'source-over'; },
+      MeasureText: null,
+    };
+    g.MeasureText = g.CalcTextWidth;
+    return g;
+  }
+
+  function applyMatrix(ctx, m) {
+    // JSplitter 的矩阵是 3×2：[m11, m12, m21, m22, dx, dy]
+    if (Array.isArray(m) || ArrayBuffer.isView(m)) {
+      if (m.length >= 6) ctx.transform(m[0], m[1], m[2], m[3], m[4], m[5]);
+      else if (m.length >= 4) ctx.transform(m[0], m[1], m[2], m[3], 0, 0);
+    }
+  }
+
+  function fontCssOf(font) { return font && font.Css ? font.Css : '10px "Geist Mono", monospace'; }
+
+  function drawTextImpl(ctx, text, font, colour, x, y, w, h, flags, strokeW) {
+    flags = flags | 0;
+    ctx.save();
+    ctx.font = fontCssOf(font);
+    ctx.fillStyle = toCss(colour >>> 0);
+    ctx.strokeStyle = toCss(colour >>> 0);
+    ctx.textBaseline = 'alphabetic';
+    const single = !!(flags & DT.SINGLELINE) || !(flags & DT.WORDBREAK);
+    let txt = text;
+    if (flags & DT.NOPREFIX) txt = txt.replace(/&/g, '');
+    // 对齐
+    let tx = x;
+    const align = (flags & DT.CENTER) ? 'center' : (flags & DT.RIGHT) ? 'right' : 'left';
+    ctx.textAlign = align;
+    if (align === 'center') tx = x + w / 2; else if (align === 'right') tx = x + w;
+    // 垂直：D2D 的单行是"在矩形里居中"
+    let ty;
+    if (flags & DT.VCENTER) { ctx.textBaseline = 'middle'; ty = y + h / 2; }
+    else { ctx.textBaseline = 'alphabetic'; ty = y + (font.Ascent || font.Height * 0.8); }
+    // 省略号
+    if (flags & 0x00008000 && w > 0) {
+      const full = ctx.measureText(txt).width;
+      if (full > Math.abs(w)) {
+        const ell = '…';
+        let lo = 0, hi = txt.length;
+        while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (ctx.measureText(txt.slice(0, mid) + ell).width <= Math.abs(w)) lo = mid; else hi = mid - 1; }
+        txt = txt.slice(0, lo) + ell;
+      }
+    }
+    if (strokeW) { ctx.lineWidth = strokeW; ctx.strokeText(txt, tx, ty, Math.abs(w) || undefined); }
+    ctx.fillText(txt, tx, ty, (single && w > 0) ? Math.abs(w) + 40 : undefined);
+    ctx.restore();
+  }
+
+  /* ================================================================== d2d -- */
+
+  const FONT_FAMILY_BY_FILE = {
+    Light: 'Geist Mono Light', Regular: 'Geist Mono', Medium: 'Geist Mono Medium',
+    SemiBold: 'Geist Mono SemiBold', Bold: 'Geist Mono',
+  };
+  const FONT_WEIGHT_BY_FILE = { Light: 300, Regular: 400, Medium: 500, SemiBold: 600, Bold: 700 };
+
+  let measureCtx = null;
+  const measure = () => (measureCtx ??= document.createElement('canvas').getContext('2d'));
+
+  const d2d = {
+    Font(family, sizePx, style) {
+      const fam = family || 'Geist Mono';
+      const size = Math.max(1, sizePx || 10);
+      const f = {
+        Family: fam, Size: size, Style: style | 0,
+        Css: `${style & 1 ? 'italic ' : ''}${style & 2 ? '700 ' : '400 '}${size}px "${fam}", "Microsoft YaHei UI", sans-serif`,
+      };
+      const m = measure(); m.save(); m.font = f.Css;
+      const tm = m.measureText('Mg');
+      f.Height = Math.ceil(tm.fontBoundingBoxAscent != null
+        ? tm.fontBoundingBoxAscent + tm.fontBoundingBoxDescent
+        : size * 1.32);
+      f.Ascent = Math.ceil(tm.fontBoundingBoxAscent != null ? tm.fontBoundingBoxAscent : size * 1.06);
+      m.restore();
+      return f;
+    },
+    Image(path) { return imageFor(norm(path)); },
+    CreateImage(w, h) {
+      const cv = document.createElement('canvas');
+      cv.width = Math.max(1, Math.round(w)); cv.height = Math.max(1, Math.round(h));
+      const g2 = cv.getContext('2d');
+      return {
+        __el: cv, __ready: true, __raw: cv, Width: cv.width, Height: cv.height, __image: true,
+        GetGraphics() { return makeGr(g2, cv); },
+        ReleaseGraphics() { },
+        Dispose() { },
+      };
+    },
+    LoadImageAsyncV(path, onDone) { const img = imageFor(norm(path)); queueMicrotask(() => onDone && onDone(img)); return img; },
+    // ⚠️ 主题实际用的是这个名字（带数字后缀，我第一次枚举 API 时用 [A-Za-z_] 漏掉了它）：
+    //     d2d.LoadImageAsyncV2(0, path).then(img => …)，第一个参数是占位，返回 Promise
+    LoadImageAsyncV2(_unused, path) { return imageReady(norm(path)); },
+    LoadImageAsync(path, onDone) { const img = imageFor(norm(path)); queueMicrotask(() => onDone && onDone(img)); return img; },
+    Effect(clsid) {
+      const fx = { Clsid: String(clsid || '').toUpperCase(), __input: null, __css: '', values: {} };
+      fx.SetValue = (i, v) => { fx.values[i] = v; if (i === 0 && v && v.length >= 20) fx.__deg = hueFromMatrix(v); if (fx.__deg) fx.__css = `hue-rotate(${fx.__deg.toFixed(2)}deg)`; };
+      fx.SetInput = (i, img) => { if (i === 0) fx.__input = img; };
+      fx.SetInputCount = () => { };
+      fx.SetOutputRect = () => { };
+      return fx;
+    },
+    Brush(kind, img, opacity) {
+      return { Kind: kind, Image: img, Opacity: opacity, __brush: true, __kind: kind, __img: img };
+    },
+    StrokeStyle(o) {
+      if (!o) return;
+      if (o.startCap != null) CTX && (CTX.lineCap = ['butt', 'square', 'round'][o.startCap] || 'butt');
+      if (o.lineJoin != null) CTX && (CTX.lineJoin = ['miter', 'bevel', 'round'][o.lineJoin] || 'miter');
+      return o;
+    },
+    TextLayout() { return { Draw: () => { } }; },
+  };
+
+  /** 从 Direct2D 的 5×4 色相矩阵反解角度（数值拟合，够准也够快） */
+  function hueFromMatrix(m) {
+    const target = [m[0], m[1], m[2], m[4], m[5], m[6]];
+    let best = 0, bestErr = Infinity;
+    for (let deg = -180; deg <= 180; deg += 0.5) {
+      const a = deg * Math.PI / 180, c = Math.cos(a), s = Math.sin(a);
+      const cand = [.213 + .787 * c - .213 * s, .213 - .213 * c + .143 * s, .213 - .213 * c - .787 * s,
+                    .715 - .715 * c - .715 * s, .715 + .285 * c + .140 * s, .715 - .715 * c + .715 * s];
+      let err = 0;
+      for (let i = 0; i < 6; i++) err += (cand[i] - target[i]) ** 2;
+      if (err < bestErr) { bestErr = err; best = deg; }
+    }
+    return best;
+  }
+
+  function imageFor(rel) {
+    if (!rel) return null;
+    if (imageCache.has(rel)) return imageCache.get(rel);
+    const dim = (MANIFEST.images || {})[rel];
+    const handle = { __rel: rel, __ready: false, __el: null, __onReady: [], Width: dim ? dim.w : 0, Height: dim ? dim.h : 0, __image: true };
+    const el = new Image();
+    el.decoding = 'async';
+    el.onload = () => {
+      handle.__el = el; handle.__ready = true;
+      handle.Width = el.naturalWidth; handle.Height = el.naturalHeight;
+      dirty = true; schedule();           // 图片到位后自动重绘（主题自己有重绘节拍，这里兜底）
+      const cbs = handle.__onReady.splice(0);
+      for (const cb of cbs) { try { cb(handle); } catch (e) { console.error(e); } }
+    };
+    el.onerror = () => {
+      handle.__ready = false;
+      const cbs = handle.__onReady.splice(0);   // 失败的也要结算，否则 await 永远挂着
+      for (const cb of cbs) { try { cb(handle); } catch (e) { } }
+    };
+    el.src = '/' + rel;
+    handle.__el = el;
+    imageCache.set(rel, handle);
+    return handle;
+  }
+
+  /** 统一入口：拿到"已就绪（或已失败）"的图片句柄 */
+  function imageReady(rel) {
+    const h = imageFor(rel);
+    if (!h || h.__ready || h.__failed) return Promise.resolve(h);
+    return new Promise((res) => { h.__onReady.push(res); setTimeout(() => res(h), 15000); });
+  }
+
+  /* ================================================ fb / plman / utils -- */
+
+  // foobar2000 主菜单命令表（fb.EnumerateMainMenuCommands 的返回内容）。
+  // 主题用它做：Light/Dark 切换的兜底、可视化列表、DSP 预设列表。
+  // 网页版没有 foobar2000 的菜单体系，这里给出最小可用集合。
+  const MENU_COMMANDS = [
+    { Type: 'Fixed', FullPath: 'View/Mode/Switch to other mode', Name: 'Switch to other mode' },
+    { Type: 'Fixed', FullPath: 'View/Mode/Light', Name: 'Light' },
+    { Type: 'Fixed', FullPath: 'View/Mode/Dark', Name: 'Dark' },
+    { Type: 'Fixed', FullPath: 'View/Mode/Use system setting', Name: 'Use system setting' },
+  ];
+
+  /** fb.CreateMainMenuManager() —— 主题用它构建 File/Edit/View/… 子菜单 */
+  function mainMenuManager() {
+    return {
+      __name: '',
+      Init(name) { this.__name = String(name || ''); return true; },
+      BuildMenu(menu, baseId, maxId) { return true; },   // 网页版没有原生菜单项可加
+      ExecuteByID() { return false; },
+      Dispose() { },
+    };
+  }
+
+  /* ---------------------------------------------------------- 媒体库（宿主提供） -- */
+  // 宿主（app.js）把扫好的曲库放在 window.__RHINE_LIBRARY__：
+  //   { tracks: [{title,artist,album,albumArtist,genre,year,codec,bits,rate,kbps,lossless,
+  //               length,disc,track,path,url,file}], playlists:[{name,items:[i…]}], activePlaylist, playing:{playlist,item} }
+  const LIB_ROOT = () => window.__RHINE_LIBRARY__ || null;
+  const libTracks = () => { const L = LIB_ROOT(); return (L && L.tracks) || []; };
+  const libPlaylists = () => { const L = LIB_ROOT(); return (L && L.playlists) || []; };
+  const trackAt = (i) => libTracks()[i] || null;
+
+  /** 曲目句柄：主题只把它当"不透明 id + 少量属性"用。
+   *  ⚠️ `RawPath` / `SubSong` 必须给：主题判断"同一首曲目"用的是
+   *     `h.RawPath === k.RawPath && h.SubSong === k.SubSong`（archive.js 的 sameTrack），
+   *     缺了这两个字段两边都是 undefined → **所有曲目互相相等** → 选中/提升/居中逻辑全乱
+   *     （症状：点一张外壳，另一张被当成同一张，位置和动画都错）。 */
+  function makeTrackHandle(i) {
+    const t = trackAt(i);
+    return t ? { __id: i, __track: true, Length: t.length || 0, Path: t.path || '', RawPath: t.path || '', SubSong: 0, FileSize: t.size || 0 } : null;
+  }
+
+  /** 把曲目摊平成 foobar2000 的字段名（TitleFormat 用） */
+  function fieldsOf(t) {
+    if (!t) return {};
+    const m = Math.floor((t.length || 0) / 60), s = Math.round((t.length || 0) % 60);
+    return {
+      title: t.title || '', artist: t.artist || '', 'album artist': t.albumArtist || t.artist || '',
+      album: t.album || '', genre: t.genre || '', date: t.year || '', year: t.year || '',
+      codec: t.codec || '', bitspersample: t.bits || '', samplerate: t.rate || '', bitrate: t.kbps ? t.kbps * 1000 : '',
+      lossless: t.lossless ? '1' : '', length: `${m}:${String(s).padStart(2, '0')}`,
+      length_seconds: String(Math.round(t.length || 0)), length_seconds_fp: String(t.length || 0),
+      discnumber: t.disc || '1', tracknumber: t.track || '', added: t.added || '',
+      play_count: t.plays || '0', path: t.path || '', subsong: '0', filename: String(t.path || '').split('\\').pop(),
+    };
+  }
+
+  const SHARED = () => (window.__RHINE_SHARED__ || { transport: {}, library: [], playlists: [] });
+
+  /** 句柄列表（fb.CreateHandleList / fb.GetLibraryItems / plman.GetPlaylistItems 的返回值）
+   *  ⚠️ JSplitter 的句柄列表是**类数组**：主题里既有 `list.Item(i)` 也有 `list[i]` 下标访问
+   *     （如 archive.js: `const h = list[i]`）。只实现 Item() 会让下标拿到 undefined，
+   *      症状是卡片里的曲目行显示成 `01 ?` / `00:00`。所以用 Proxy 支持数字下标。 */
+  function handleList(items = []) {
+    const list = {
+      Count: items.length,
+      Item: (i) => items[i] || null,
+      Add: (h) => { items.push(h); list.Count = items.length; return true; },
+      AddRange: (other) => { if (other && other.Count) for (let i = 0; i < other.Count; i++) items.push(other.Item(i)); list.Count = items.length; return true; },
+      AddItem: (h) => list.Add(h),
+      Sort: () => { items.sort(); return true; },
+      OrderByFormat: () => true, OrderByFilenames: () => true, OrderByPath: () => true, OrderByRelativePath: () => true,
+      Find: () => -1, RemoveAll: () => true, Remove: () => false, RemoveById: () => false,
+      Clone: () => handleList(items.slice()),
+      GetLibraryRelativePaths: () => handleList(),
+      CalcTotalDuration: () => 0, CalcTotalSize: () => 0, CalcTotalSizeOf: () => 0,
+      GetLength: () => items.length, Dispose: () => { },
+      __items: items,
+    };
+    return new Proxy(list, {
+      get(t, k) {
+        if (typeof k === 'string' && k !== '' && /^\d+$/.test(k)) return items[Number(k)] || null;
+        if (k === 'length') return items.length;
+        return t[k];
+      },
+      set(t, k, v) {
+        if (typeof k === 'string' && k !== '' && /^\d+$/.test(k)) { items[Number(k)] = v; return true; }
+        t[k] = v; return true;
+      },
+      has(t, k) { return (typeof k === 'string' && /^\d+$/.test(k)) || k in t; },
+    });
+  }
+
+  const fb = {
+    ProfilePath: '', FoobarPath: '', ComponentPath: '', CursorFollowPlayback: false,
+    get IsPlaying() { return !!SHARED().transport.playing; },
+    get IsPaused() { return !!SHARED().transport.paused; },
+    get PlaybackTime() { return SHARED().transport.time || 0; },
+    get PlaybackLength() { return SHARED().transport.length || 0; },
+    get Volume() { return SHARED().transport.volume != null ? SHARED().transport.volume : -10; },
+    // 主题的音量条是**赋值**（transport.js: fb.Volume = pos2vol(...)），只给 getter 会在严格模式下抛错
+    set Volume(v) { HOST.command('volume:' + v); },
+    GetNowPlaying() { const L = LIB_ROOT(); return L && L.playing && L.playing.item >= 0 ? makeTrackHandle(L.playing.item) : null; },
+    GetFocusItem() { const L = LIB_ROOT(); return L && L.focus >= 0 ? makeTrackHandle(L.focus) : null; },
+    GetLibraryItems() { const list = handleList(libTracks().map((_, i) => makeTrackHandle(i)).filter(Boolean)); return list; },
+    CreateHandleList() { return handleList(); },
+    TitleFormat(spec) {
+      return {
+        Eval: () => fmt(spec, {}),
+        EvalWithMetadb: (h) => fmt(spec, fieldsOf(h && (h.__track ? trackAt(h.__id) : h))),
+        EvalWithMetadbs: (list) => {
+          const out = [];
+          if (list) for (let i = 0; i < (list.Count || 0); i++) out.push(fmt(spec, fieldsOf(trackAt((list.Item(i) || {}).__id))));
+          return out;
+        },
+        Dispose() { },
+      };
+    },
+    // 曲库就绪前返回 false：主题会退回"用播放列表"，库就绪后宿主会触发 on_library_items_added 让它重新索引
+    IsLibraryEnabled() { return !!LIB_ROOT(); },
+    IsLibraryInitialised() { return !!LIB_ROOT(); },
+    PlayOrPause() { HOST.command('toggle'); }, Play() { HOST.command('play'); }, Pause() { HOST.command('pause'); },
+    Stop() { HOST.command('stop'); }, Next() { HOST.command('next'); }, Prev() { HOST.command('prev'); },
+    VolumeUp() { HOST.command('vol-up'); }, VolumeDown() { HOST.command('vol-down'); },
+    RunMainMenuCommand(path) {
+      const p = String(path || '');
+      // 主题的 Light/Dark 切换走的就是这条：View › Mode
+      const m = /^View\/Mode\/(.+)$/i.exec(p);
+      if (m) { HOST.command('mode:' + m[1]); return true; }
+      if (/^Library\/Configure$/i.test(p)) { HOST.command('add-music'); return true; }
+      const pb = /^Playback\/(Play|Pause|Stop|Next|Previous)$/i.exec(p);
+      if (pb) { HOST.command(pb[1].toLowerCase()); return true; }
+      return false;
+    },
+    ShowPreferences() { }, ShowPopupMessage() { }, ShowConsole() { },
+    RegisterMainMenuCommand() { }, CreateMainMenuManager() { return mainMenuManager(); },
+    // ⚠️ 主题拿它做 JSON.parse()，**必须返回 JSON 字符串**（返回数字会让 for…of 直接抛"不可迭代"，
+    //    进而把 Light/Dark 切换整条链路打断）
+    EnumerateMainMenuCommands() { return JSON.stringify(MENU_COMMANDS); },
+    GetDSPPresets() { return []; }, GetActiveDSPs() { return []; }, SetDSPPreset() { },
+    GetSelections() { return handleList(); },
+  };
+
+  /** fb.TitleFormat 的极简实现：够 03/04/05 视图显示用；真正的媒体库接上后再补全 */
+  function fmt(spec, meta) {
+    return String(spec || '').replace(/\[([^\]]*)\]/g, (_, inner) => {
+      const v = fmt(inner, meta);
+      return v === '?' ? '' : v;
+    }).replace(/%([a-z_]+)%/gi, (_, name) => {
+      const v = meta[name.toLowerCase()];
+      return v == null ? '?' : String(v);
+    }).replace(/\$if\(([^,]*),([^,]*)(?:,([^)]*))?\)/gi, (_, cond, a, b) => (cond.trim() && cond.trim() !== '?' ? a : (b || '')))
+      .replace(/\$num\(([^,]*),(\d+)\)/gi, (_, n, w) => String(n).padStart(+w, '0'))
+      .replace(/\$upper\(([^)]*)\)/gi, (_, s) => String(s).toUpperCase())
+      .replace(/\$lower\(([^)]*)\)/gi, (_, s) => String(s).toLowerCase())
+      .replace(/\$char\((\d+)\)/gi, (_, n) => String.fromCharCode(+n));
+  }
+
+  const plman = new Proxy({
+    get ActivePlaylist() { return LIB_ROOT() ? (LIB_ROOT().activePlaylist ?? (libPlaylists().length ? 0 : -1)) : -1; },
+    // 主题多处**赋值**切换当前播放列表（manager/header/archive/transport），必须有 setter
+    set ActivePlaylist(v) { HOST.command('active-playlist:' + v); },
+    get PlaylistCount() { return libPlaylists().length; },
+    get PlayingPlaylist() { const L = LIB_ROOT(); return L && L.playing ? L.playing.playlist : -1; },
+    get PlaybackOrder() { return 0; },
+    get PlaylistRecycler() { return 0; },
+    GetPlaylistName: (i) => (libPlaylists()[i] || {}).name || '',
+    GetPlaylistItems: (i) => handleList(((libPlaylists()[i] || {}).items || []).map(makeTrackHandle).filter(Boolean)),
+    GetPlaylistItemCount: (i) => ((libPlaylists()[i] || {}).items || []).length,
+    PlaylistItemCount: (i) => ((libPlaylists()[i] || {}).items || []).length,
+    FindPlaylist: (name) => libPlaylists().findIndex((p) => p.name === name),
+    FindOrCreatePlaylist: (name) => libPlaylists().findIndex((p) => p.name === name),
+    // 主题 playAlbum() 的链路：archivePlaylist()（找不到就建）→ loadAlbum()（清空+装专辑）→ 播放。
+    // 之前三个都是 stub：CreatePlaylist 返回 -1 → playAlbum 在 `if (pl < 0) return` 处静默退出，
+    // 卡片的 PLAY ALBUM / PLAY TRACK 按钮点了没反应。
+    CreatePlaylist: (at, name) => {
+      const idx = HOST.command(`create-playlist:${at == null ? -1 : at}:${String(name == null ? '' : name)}`);
+      return typeof idx === 'number' ? idx : -1;
+    },
+    CreateAutoPlaylist: () => -1,
+    GetPlayingItemLocation: () => {
+      const L = LIB_ROOT();
+      const item = L && L.playing ? L.playing.item : -1;
+      return { IsValid: item >= 0, PlaylistIndex: item >= 0 ? (L.playing.playlist ?? 0) : -1, PlaylistItemIndex: item };
+    },
+    GetPlaylistFocusItemIndex: (i) => { const L = LIB_ROOT(); return L && L.focusPlaylist === i ? (L.focus ?? -1) : -1; },
+    GetPlaylistSelectedIndexes: () => { const L = LIB_ROOT(); return L && L.focus >= 0 ? [L.focus] : []; },
+    GetPlaybackQueueContents: () => [],
+    ExecutePlaylistDefaultAction: (p, i) => { HOST.command(`play:${p}:${i}`); return true; },
+    SetPlaylistFocusItem: (p, i) => { HOST.command(`focus:${p}:${i}`); },
+    SetPlaylistSelectionSingle: (p, i) => { HOST.command(`focus:${p}:${i}`); },
+    ClearPlaylistSelection: () => { },
+    ClearPlaylist: (p) => { HOST.command('clear-playlist:' + p); },
+    RenamePlaylist: () => { },
+    RemovePlaylist: () => { }, RemovePlaylistSwitch: () => { }, MovePlaylist: () => { },
+    DuplicatePlaylist: () => -1, UndoBackup: () => { },
+    // list 是 handleList（Proxy）：句柄由 makeTrackHandle(i) 生成，__id 即曲目索引
+    InsertPlaylistItems: (p, at, list) => {
+      try {
+        const raw = list && list.__items;
+        const items = raw || [];
+        const n = list && list.Count != null ? list.Count : items.length;
+        const ids = [];
+        for (let i = 0; i < n; i++) {
+          const h = items[i] != null ? items[i] : (list.Item ? list.Item(i) : null);
+          ids.push(h && h.__id != null ? h.__id : -1);
+        }
+        HOST.command(`insert-playlist:${p}:${at == null ? 0 : at}:${ids.join(',')}`);
+        return true;
+      } catch (e) { return false; }
+    },
+    InsertPlaylistItemsFilter: () => { }, EnsurePlaylistItemVisible: () => { }, SortByFormat: () => false,
+    SortByFormatV2: () => false, ShowAutoPlaylistUI: () => false, IsAutoPlaylist: () => false,
+    IsPlaylistLocked: () => false,
+    GetPlaylistItemsForPlayback: () => handleList(),
+    AddLocations: () => { }, AddPlaylistItemToPlaybackQueue: () => { }, AddItemToPlaybackQueue: () => { },
+  }, {
+    get(t, k) { if (k in t) return t[k]; return () => undefined; },
+  });
+
+  const utils = {
+    // 主题会把设置写进 <profile>\audio-archive-settings.json（utils.WriteTextFile → localStorage 覆盖层），
+    // 所以 IsFile / ReadTextFile 必须也认这一层，否则设置读不回来（保真度问题）
+    __fileKey: (p) => 'rhine:file:' + norm(p),
+    IsFile: (p) => {
+      const k = norm(p);
+      if (Object.prototype.hasOwnProperty.call(MANIFEST.text, k)) return true;
+      if (Object.prototype.hasOwnProperty.call(MANIFEST.images, k)) return true;
+      try { return localStorage.getItem('rhine:file:' + k) != null; } catch (e) { return false; }
+    },
+    IsDirectory: (p) => { const d = norm(p).replace(/\/$/, '') + '/'; return (MANIFEST.files || []).some((f) => f.startsWith(d)); },
+    ReadTextFile: (p) => {
+      const k = norm(p);
+      if (Object.prototype.hasOwnProperty.call(MANIFEST.text, k)) return MANIFEST.text[k];
+      try { const v = localStorage.getItem('rhine:file:' + k); if (v != null) return v; } catch (e) { }
+      return '';
+    },
+    WriteTextFile: (p, s) => { try { localStorage.setItem('rhine:file:' + norm(p), s); } catch (e) { } return true; },
+    CreateFolder: () => true, RemoveFile: () => true,
+    // 主题用 `for (const f of utils.Glob(root + "*\\case.json"))` 遍历，所以必须返回**可迭代的路径数组**，
+    // 且路径保持主题的反斜杠形式（skins.js 会拿它做 slice 运算推导目录名）
+    Glob(pattern) {
+      const p = norm(pattern);
+      const re = new RegExp('^' + p.split('*').map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('[^/]*') + '$');
+      return (MANIFEST.files || []).filter((f) => re.test(f)).map((f) => f.replace(/\//g, '\\'));
+    },
+    LoadFont: (p) => loadFont(norm(p)),
+    GetSystemMetrics: (i) => (i === 0 ? screen.width : i === 1 ? screen.height : 16),
+    IsKeyPressed: () => false,
+    InputBox: (h, c, v) => { const r = window.prompt(c || h || '', v || ''); return r == null ? v || '' : r; },
+    Run(exe, args, ...rest) {
+      // 主题切换**配色方案**和**播放列表预设**的方式是：
+      //   utils.Run(foobar2000.exe, `/columnsui:import-quiet "...\preset-<preset>-<scheme>-<mode>.fcl"`)
+      // 即"重启 foobar2000 导入那份 .fcl"（Columns UI 的配色集只能靠导入布局来应用）。
+      // 网页版没有"重启自己"，所以这里解析出预设/方案/模式，交给宿主直接应用配色集
+      // —— 效果等价：主题随后在 on_colours_changed 里重读 GetColourCUI(3) 就能反查出新的 SCHEME/MODE。
+      const a = String(args || '');
+      const m = /preset-([A-Za-z0-9_-]+)-([A-Za-z0-9_-]+)-(light|dark)\.fcl/i.exec(a);
+      if (m) {
+        HOST.command(`import:${JSON.stringify({ preset: m[1], scheme: m[2], mode: m[3] })}`);
+        return true;
+      }
+      console.log('[utils.Run 未实现]', exe, a);
+      return false;
+    },
+    OpenDatabase: () => null,
+    DownloadFileAsync: (url, path, onDone) => { setTimeout(() => onDone && onDone(0, 0), 0); },
+    DownloadFile: () => false, DownloadImageAsyncV: (url, onDone) => setTimeout(() => onDone && onDone(null), 0),
+    GetAlbumArtAsyncV: () => null, GetAlbumArtAsync: () => null,
+    GetAlbumArtAsyncV2: () => Promise.resolve(null),
+    GetWaveformAsync: () => null, GetWaveformAsyncV: () => null,
+    ReadINI: () => '', WriteINI: () => true,
+    CheckComponent: () => false, GetPackageInfo: () => null,
+    FormatDuration: (s) => String(s),
+    ColourPicker: () => 0, FileTest: () => false,
+  };
+
+  function loadFont(rel) {
+    const name = rel.split('/').pop().replace(/\.ttf$/i, '');
+    const weightToken = (name.match(/GeistMono-(\w+)/) || [])[1] || 'Regular';
+    const family = FONT_FAMILY_BY_FILE[weightToken] || 'Geist Mono';
+    const weight = FONT_WEIGHT_BY_FILE[weightToken] || 400;
+    try {
+      const ff = new FontFace(family, `url(/${rel})`, { weight: String(weight), style: 'normal' });
+      ff.load().then((f) => document.fonts.add(f)).catch(() => { });
+    } catch (e) { }
+    return true;
+  }
+
+  /* ============================================================== 宿主窗口 -- */
+
+  const props = new Map();
+  const HOST = {
+    command() { },      // 由父页面覆盖：播放控制转发
+    other() { },        // window.NotifyOthers 转发
+  };
+
+  const windowShim = {
+    // ⚠️ 保持 96（= 1x 版式）。曾试过跟随 devicePixelRatio 放大，结果是"整套 UI 等比放大"，
+    //    在同样的像素面积里反而互相挤压错位 —— 原版的版式不是把 1x 版式整体放大，
+    //    而是按它自己的窗口尺寸重新排版。所以这里不要动。
+    DPI: 96,
+    ID: 'panel', DlgCode: 0, InstanceType: 0, Name: 'panel',
+    Repaint() { dirty = true; schedule(); },
+    RepaintRect() { dirty = true; schedule(); },
+    SetTimeout(fn, ms) { const id = setTimeout(() => { timers.delete(id); try { fn(); } catch (e) { console.error(e); } }, Math.max(0, ms || 0)); timers.set(id, 't'); return id; },
+    ClearTimeout(id) { clearTimeout(id); timers.delete(id); },
+    SetInterval(fn, ms) { const id = setInterval(() => { try { fn(); } catch (e) { console.error(e); } }, Math.max(1, ms || 1)); timers.set(id, 'i'); return id; },
+    ClearInterval(id) { clearInterval(id); timers.delete(id); },
+    SetProperty(name, value) { props.set(name, value); try { localStorage.setItem(`rhine:prop:${CFG.id}:${name}`, JSON.stringify(value)); } catch (e) { } },
+    GetProperty(name, def) {
+      if (props.has(name)) return props.get(name);
+      try { const raw = localStorage.getItem(`rhine:prop:${CFG.id}:${name}`); if (raw != null) { const v = JSON.parse(raw); props.set(name, v); return v; } } catch (e) { }
+      return def;
+    },
+    NotifyOthers(name, info) { HOST.other(name, info); },
+    Reload() { location.reload(); },
+    GetColourCUI(type) { return COLOURS[type] != null ? COLOURS[type] : 0xFF000000; },
+    GetColourDUI(type) { return COLOURS[type] != null ? COLOURS[type] : 0xFF000000; },
+    SetCursor(id) { if (CANVAS) CANVAS.style.cursor = CURSORS[id] || 'default'; },
+    GetPanelCount() { return (parent.__PANELS__ || []).length; },
+    GetPanelByIndex(i) { return (parent.__PANELS__ || [])[i] || null; },
+    CreatePopupMenu() { return popupStub(); },
+    CreateThemeManager() { return { SetPartAndStateID: () => { }, IsThemePartDefined: () => false }; },
+    ShowConfigure() { },
+  };
+  const CURSORS = { 0: 'default', 1: 'default', 2: 'text', 3: 'pointer', 4: 'wait', 5: 'crosshair', 6: 'pointer', 7: 'default', 8: 'nwse-resize', 9: 'nesw-resize', 10: 'ew-resize', 11: 'ns-resize', 12: 'move', 13: 'not-allowed' };
+  function popupStub() {
+    const p = {
+      AppendMenuItem: () => p, AppendMenuSeparator: () => p, AppendTo: () => p,
+      CheckMenuItem: () => p, CheckMenuRadioItem: () => p, EnableMenuItem: () => p,
+      TrackPopupMenu: () => 0, Dispose: () => { }, SetCurFocus: () => p,
+    };
+    return p;
+  }
+
+  /* =============================================================== 颜色表 -- */
+
+  let COLOURS = { 3: 0xFF1B1C18 };   // 3 = background（archive/dark 的底色），启动时按 tokens.json 校准
+
+  function calibrateColours() {
+    try {
+      const tok = JSON.parse(MANIFEST.text['themes/audio-archive/tokens/tokens.json'] || '{}');
+      const scheme = (window.__RHINE_SCHEME__) || 'archive';
+      const mode = (window.__RHINE_MODE__) || 'dark';
+      const set = tok.schemes && tok.schemes[scheme] && tok.schemes[scheme][mode];
+      if (set) {
+        const hex = (set.bg || '#1b1c18').replace('#', '');
+        COLOURS[3] = (0xFF000000 | parseInt(hex, 16)) >>> 0;
+        COLOURS[1] = (0xFF000000 | parseInt((set.fg || '#ffffff').replace('#', ''), 16)) >>> 0;   // text
+      }
+      window.__RHINE_TOKENS__ = tok;
+    } catch (e) { console.warn('tokens 解析失败', e); }
+  }
+
+  /* ========================================================== 生命周期 -- */
+
+  function schedule() {
+    if (rafPending) return;
+    rafPending = true;
+    requestAnimationFrame(() => {
+      rafPending = false;
+      if (!dirty) return;
+      dirty = false;
+      paint();
+    });
+  }
+
+  function paint() {
+    if (!HANDLERS.on_paint) return;
+    try {
+      HANDLERS.on_paint(makeGr(CTX, CANVAS));
+    } catch (e) {
+      console.error('[paint]', e);
+      report('error', { phase: 'paint', message: String(e && e.stack || e) });
+    }
+  }
+
+  function resize(w, h) {
+    const dpr = window.devicePixelRatio || 1;
+    DPR = dpr;                       // 拾取器要按设备像素读颜色（逻辑坐标 × DPR）
+    W = Math.max(1, Math.round(w)); H = Math.max(1, Math.round(h));
+    CANVAS.width = Math.round(W * dpr); CANVAS.height = Math.round(H * dpr);
+    CANVAS.style.width = W + 'px'; CANVAS.style.height = H + 'px';
+    CTX.setTransform(dpr, 0, 0, dpr, 0, 0);
+    try { HANDLERS.on_size && HANDLERS.on_size(W, H); } catch (e) { console.error('[size]', e); }
+    dirty = true; schedule();
+  }
+
+  function report(type, data) { try { parent.postMessage({ __rhine: 1, id: CFG.id, type, data }, '*'); } catch (e) { } }
+
+  /* ================================================ 加载（含 include） -- */
+
+  function definePanelGlobals() {
+    const g = window;
+    g.d2d = d2d; g.fb = fb; g.plman = plman; g.utils = utils;
+    Object.assign(window, windowShim);   // 面板脚本里的 window.X 就是宿主 API（注意：不能再赋回 window.window，它是只读 getter）
+    g.DT_SINGLE = DT.SINGLELINE | DT.NOPREFIX | DT.VCENTER;
+    g.DT_CENTER_SINGLE = g.DT_SINGLE | DT.CENTER;
+    g.DT_RIGHT_SINGLE = g.DT_SINGLE | DT.RIGHT;
+    g.DT_ELLIPSIS = DT.ENDELLIPSIS;
+    g.MK_LBUTTON = MK.LBUTTON; g.MK_RBUTTON = MK.RBUTTON; g.MK_SHIFT = MK.SHIFT;
+    g.MK_CONTROL = MK.CONTROL; g.MK_MBUTTON = MK.MBUTTON;
+    g.DT_WORDBREAK = DT.WORDBREAK; g.DT_CALCRECT = 0x00000400;
+    g.MOUSETRACK = {};
+    // include()：依赖已由服务器解析并按序预加载，这里退化成 no-op（缺了就报出来）
+    g.include = function include(p) {
+      const key = norm(p);
+      if (window.__RHINE_LOADED__ && window.__RHINE_LOADED__.has(key)) return;
+      if (MANIFEST && MANIFEST.text && Object.prototype.hasOwnProperty.call(MANIFEST.text, key)) {
+        console.warn('[include] 该文件未被预加载（依赖图漏了）:', key);
+      } else {
+        console.error('[include 缺失]', key);
+      }
+    };
+    // JSplitter 的 Worker 是专有签名：new Worker({ file: path }, name)。
+    // 这里换成**通往真 worker 的桥**：把主题的 index/covers 请求转给 workers/library-web.js，
+    // 再把 worker 的回包改造成主题期望的形状（ImageBitmap → 本 shim 的图片句柄）。
+    // 只有 stage 面板（include 了 lib/library.js）会创建它，所以全局只有一个 worker。
+    g.Worker = function RhineWorkerBridge(fileOrOpts, name) {
+      const file = fileOrOpts && fileOrOpts.file ? fileOrOpts.file : fileOrOpts;
+      const w = {
+        onmessage: null, onerror: null, onmessageerror: null,
+        postMessage: () => { }, terminate() { try { real && real.terminate(); } catch (e) { } },
+        addEventListener() { }, removeEventListener() { }, dispatchEvent() { return false; },
+      };
+      let real = null, pendingIndex = null;
+      try {
+        real = new NativeWorker('/workers/library-web.js', { type: 'module' });
+      } catch (e) {
+        console.error('[库 worker 创建失败]', e);
+        return w;
+      }
+      console.log(`[Worker 桥] ${name || ''} ← ${file}  →  /workers/library-web.js`);
+      workingWorkers.push(w);
+
+      real.onmessage = (ev) => {
+        const m = ev.data || {};
+        try {
+          if (m.type === 'catalog') {
+            window.__RHINE_CATALOG__ = m;    // 宿主读取（播放需要路径/来源）
+            try { parent.__RHINE_ON_CATALOG__ && parent.__RHINE_ON_CATALOG__(m); } catch (e) { }
+            if (w.onmessage) w.onmessage({ data: { gen: m.gen, type: 'catalog', tracks: m.tracks, albums: m.albums, items: m.items, ms: m.ms, written: m.written } });
+          } else if (m.type === 'cover') {
+            if (w.onmessage) w.onmessage({ data: { gen: m.gen, type: 'cover', key: m.key, img: bitmapHandle(m.thumb), blur: bitmapHandle(m.blur) } });
+          }
+        } catch (e) { console.error('[库消息处理]', e); }
+      };
+      real.onerror = (e) => { console.error('[库 worker 出错]', e.message || e); if (w.onerror) w.onerror(e); };
+
+      const send = (msg) => {
+        if (!msg) return;
+        if (msg.type === 'index') {
+          // ⚠️ 读**本面板**的 window（宿主把曲库挂在每个面板的 window 上），不是 parent
+          const lib = window.__RHINE_LIBRARY__;
+          if (!lib || !lib.files || !lib.files.length) { pendingIndex = msg; console.log('[库桥] 索引请求排队（曲库未就绪）gen=' + msg.gen); return; }
+          console.log('[库桥] 转发索引请求 gen=' + msg.gen + '，文件 ' + lib.files.length + ' 个');
+          real.postMessage({ cmd: 'index', gen: msg.gen, files: lib.files });
+        } else if (msg.type === 'covers') {
+          const keys = (msg.list || []).map((j) => (typeof j === 'string' ? j : j && j.key)).filter(Boolean);
+          console.log('[库桥] 请求封面 ' + keys.length + ' 张');
+          if (keys.length) real.postMessage({ cmd: 'covers', gen: msg.gen, keys });
+        }
+      };
+      w.postMessage = send;
+      w.__flush = () => { if (pendingIndex) { const m = pendingIndex; pendingIndex = null; send(m); return true; } return false; };
+      return w;
+    };
+  }
+
+  /* ================================================== 事件转发到主题 -- */
+
+  function bindEvents() {
+    const ev = (fn, ...args) => { const h = HANDLERS[fn]; if (h) { try { h(...args); } catch (e) { console.error('[' + fn + ']', e); } } };
+    const mask = (e) => (e.buttons & 1 ? MK.LBUTTON : 0) | (e.buttons & 2 ? MK.RBUTTON : 0) | (e.buttons & 4 ? MK.MBUTTON : 0) | (e.shiftKey ? MK.SHIFT : 0) | (e.ctrlKey ? MK.CONTROL : 0);
+    const pos = (e) => { const r = CANVAS.getBoundingClientRect(); return [Math.round(e.clientX - r.left), Math.round(e.clientY - r.top)]; };
+
+    /* ---------------------------------------------------------- 布局元素拾取 --
+     * 这个 UI 里没有可选的 DOM 元素：每个面板只有一个 <canvas>，按钮和外壳都是画上去的像素。
+     * 所以 DevTools 的"选取元素"只能选到 iframe/canvas 这一层。这里提供一个拾取器：
+     *   · 按住 Alt 点击画面任意位置，或
+     *   · 宿主打开"拾取模式"后直接点击
+     * 就把 [面板名 / 面板内坐标 / 主题的命中区 id / 该像素颜色] 报给宿主，
+     * 宿主打印一行可复制的信息（同时写进剪贴板）。拾取时吞掉这次点击，不会触发界面动作。
+     */
+    let PICKING = false;
+    // ⚠️ 这里必须用 window，不能用 g —— bindEvents() 的作用域里没有 g，
+    //    写成 g.xxx 会抛 ReferenceError 把整个 bindEvents 打断（鼠标监听全不注册、启动也卡住）
+    window.__rhineSetPicking = (on) => {
+      PICKING = !!on;
+      document.documentElement.style.cursor = PICKING ? 'crosshair' : '';
+      if (PICKING) console.log('[拾取] 已开启：点画面上你要指的那部分');
+    };
+    const panelName = () => (CFG && (CFG.id || CFG.panel || CFG.name)) || document.title || 'unknown';
+    CANVAS.addEventListener('click', (e) => {
+      if (!PICKING && !e.altKey) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();          // 捕获阶段拦下，主题的 on_mouse_lbtn_up 不会跑
+      const [x, y] = pos(e);
+      const px = (() => {
+        try { const d = CTX.getImageData(Math.round(x * DPR), Math.round(y * DPR), 1, 1).data; return '#' + [d[0], d[1], d[2]].map((v) => v.toString(16).padStart(2, '0')).join(''); } catch (err) { return '?'; }
+      })();
+      let hit = '（对话由宿主解析）';
+      const rep = {
+        panel: panelName(), x, y, px,
+        // 诊断：画布后备尺寸 / CSS 尺寸 / 缩放比 / 面板 CSS 尺寸 —— 排查"画的和算的不一致"
+        canvas: `${CANVAS.width}x${CANVAS.height}`,
+        css: `${CANVAS.style.width || 'auto'}x${CANVAS.style.height || 'auto'}`,
+        dpr: DPR,
+        frame: `${window.innerWidth}x${window.innerHeight}`,
+        logW: `${typeof W !== 'undefined' ? W : '?'}x${typeof H !== 'undefined' ? H : '?'}`,
+      };
+      try { parent.__RHINE_PICK__ && parent.__RHINE_PICK__(rep); } catch (err) { }
+      console.log(`[拾取] 面板=${rep.panel} 坐标=${x},${y} 颜色=${px}`);
+    }, true);
+
+    CANVAS.addEventListener('mousemove', (e) => { const [x, y] = pos(e); ev('on_mouse_move', x, y, mask(e)); });
+    CANVAS.addEventListener('mouseleave', (e) => ev('on_mouse_leave'));
+    CANVAS.addEventListener('mousedown', (e) => { const [x, y] = pos(e); if (e.button === 0) ev('on_mouse_lbtn_down', x, y, mask(e)); else if (e.button === 2) ev('on_mouse_rbtn_down', x, y, mask(e)); });
+    CANVAS.addEventListener('mouseup', (e) => {
+      const [x, y] = pos(e);
+      if (e.button === 0) ev('on_mouse_lbtn_up', x, y, mask(e));
+      else if (e.button === 2) { const r = evRet('on_mouse_rbtn_up', x, y, mask(e)); if (r === false) e.preventDefault(); }
+    });
+    CANVAS.addEventListener('dblclick', (e) => { const [x, y] = pos(e); ev('on_mouse_lbtn_dblclk', x, y, mask(e)); });
+    CANVAS.addEventListener('wheel', (e) => { const [x, y] = pos(e); ev('on_mouse_wheel', -Math.sign(e.deltaY), x, y, mask(e)); }, { passive: true });
+    CANVAS.addEventListener('contextmenu', (e) => e.preventDefault());
+    window.addEventListener('keydown', (e) => {
+      if (evRet('on_key_down', e.keyCode, 0) === false) e.preventDefault();
+      if (e.key && e.key.length === 1) ev('on_char', e.key.charCodeAt(0));
+    });
+    window.addEventListener('keyup', (e) => ev('on_key_up', e.keyCode, 0));
+    window.addEventListener('focus', () => ev('on_focus', true));
+    window.addEventListener('blur', () => ev('on_focus', false));
+    window.addEventListener('resize', () => { if (CFG.fill) resize(document.documentElement.clientWidth, document.documentElement.clientHeight); });
+
+    parent.addEventListener('message', (e) => {
+      const m = e.data;
+      if (!m || m.__rhineTo !== CFG.id) return;
+      if (m.event === 'notify' && HANDLERS.on_notify_data) { try { HANDLERS.on_notify_data(m.name, m.info); } catch (err) { } }
+      else if (m.event === 'call' && HANDLERS[m.name]) { try { HANDLERS[m.name](...(m.args || [])); } catch (err) { } }
+      else if (m.event === 'size') resize(m.w, m.h);
+      else if (m.event === 'colours') { calibrateColours(); if (HANDLERS.on_colours_changed) HANDLERS.on_colours_changed(); }
+    });
+  }
+  function evRet(fn, ...args) { const h = HANDLERS[fn]; if (!h) return undefined; try { return h(...args); } catch (e) { console.error('[' + fn + ']', e); } }
+
+  /* ================================================================ boot -- */
+
+  window.__boot = function boot(cfg) {
+    BOOT_CFG = cfg;
+    CFG = cfg; MANIFEST = cfg.manifest;
+    // 一次性把"原版参考状态"种进设置文件（种子 = 根目录 audio-archive-settings.json，由服务器进清单）。
+    // 老浏览器的 localStorage 里存着更早的设置（TRACKS 模式、别的选中项），而 ReadTextFile 是
+    // localStorage 优先 —— 不迁移的话永远读不回参考状态。seed 版本号一致就不动，
+    // 用户之后的改动都保留（主题 setSetting 写回时会把 seed 一起带出去）。
+    try {
+      const seedText = (MANIFEST.text || {})['audio-archive-settings.json'];
+      if (seedText) {
+        const seed = JSON.parse(seedText);
+        const KEY = 'rhine:file:audio-archive-settings.json';
+        const cur = JSON.parse(localStorage.getItem(KEY) || 'null');
+        if (!cur || cur.seed !== seed.seed) localStorage.setItem(KEY, JSON.stringify(seed));
+      }
+    } catch (e) { /* 种子解析失败就用现有设置 */ }
+    // 与父页面（面板容器）接线：NotifyOthers → 总线；播放控制 → 宿主
+    HOST.other = (name, info) => { try { parent.__RHINE_BUS__ && parent.__RHINE_BUS__.post(cfg.id, name, info); } catch (e) { } };
+    // 返回宿主处理结果：plman.CreatePlaylist 需要 create-playlist 命令返回的新下标
+    HOST.command = (cmd) => { try { return parent.__RHINE_CMD__ && parent.__RHINE_CMD__(cmd); } catch (e) { } };
+    calibrateColours();
+
+    document.body.style.margin = '0';
+    document.body.style.overflow = 'hidden';
+    document.body.style.background = 'transparent';
+    CANVAS = document.createElement('canvas');
+    CANVAS.style.display = 'block';
+    CTX = CANVAS.getContext('2d', { alpha: true });
+    document.body.appendChild(CANVAS);
+
+    definePanelGlobals();
+    if (cfg.region) window.REGION = cfg.region;
+    if (cfg.globals) for (const [k, v] of Object.entries(cfg.globals)) window[k] = v;
+
+    // 1) 按服务器解析好的依赖顺序插入经典脚本
+    //    经典脚本共享全局词法作用域（A 的 const/function 对 B 可见），正是主题 include() 想要的语义；
+    //    用 eval 做不到这点：主题每个文件都是 "use strict"，严格 eval 的声明不会进全局。
+    const key = cfg.scriptKey || String(cfg.entry).split('/').pop().replace('.js', '');
+    const order = (MANIFEST && MANIFEST.scripts && MANIFEST.scripts[key]) || [];
+    if (!order.length) {
+      report('error', { phase: 'load', message: '没有解析到脚本顺序: ' + key, keys: MANIFEST && MANIFEST.scripts ? Object.keys(MANIFEST.scripts) : [] });
+      return;
+    }
+    window.__RHINE_LOADED__ = new Set(order);
+
+    const loadOne = (rel) => new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = '/' + rel;
+      s.async = false;
+      s.onload = () => resolve(rel);
+      s.onerror = () => reject(new Error('脚本加载失败: ' + rel));
+      document.head.appendChild(s);
+    });
+
+    (async () => {
+      const t0 = performance.now();
+      for (const rel of order) {
+        try { await loadOne(rel); }
+        catch (e) { console.error('[script]', e); report('error', { phase: 'script', message: e.message }); return; }
+      }
+      finishBoot(t0);
+    })();
+  };
+
+  /** 脚本全部就位后：收集回调 → 绑定事件 → 首次布局与绘制 */
+  function finishBoot(t0) {
+    const names = ['on_size', 'on_paint', 'on_colours_changed', 'on_mouse_move', 'on_mouse_leave', 'on_mouse_lbtn_down',
+      'on_mouse_lbtn_up', 'on_mouse_lbtn_dblclk', 'on_mouse_rbtn_up', 'on_mouse_rbtn_down', 'on_mouse_mbtn_up',
+      'on_mouse_wheel', 'on_key_down', 'on_key_up', 'on_char', 'on_focus', 'on_notify_data',
+      'on_playback_starting', 'on_playback_new_track', 'on_playback_stop', 'on_playback_pause', 'on_playback_seek',
+      'on_playback_time', 'on_playback_queue_changed', 'on_playback_order_changed', 'on_volume_change',
+      'on_playlists_changed', 'on_playlist_switch', 'on_playlist_items_added', 'on_playlist_items_removed',
+      'on_playlist_items_reordered', 'on_playlist_items_selection_change', 'on_item_focus_change',
+      'on_metadb_changed', 'on_library_items_added', 'on_library_items_removed', 'on_library_items_changed',
+      'on_main_menu_dynamic', 'on_dsp_preset_changed', 'on_download_file_done'];
+    HANDLERS = {};
+    for (const n of names) if (typeof window[n] === 'function') HANDLERS[n] = window[n];
+
+    bindEvents();
+    resize(CFG.w || document.documentElement.clientWidth, CFG.h || document.documentElement.clientHeight);
+    paint();
+    report('ready', { handlers: Object.keys(HANDLERS), ms: +(performance.now() - t0).toFixed(1), scripts: (window.__RHINE_LOADED__ || new Set()).size });
+  }
+
+  window.__rhine = {
+    call(name, ...args) { const h = HANDLERS[name]; if (h) { try { return h(...args); } catch (e) { console.error(e); } } },
+    repaint() { dirty = true; schedule(); },
+    size(w, h) { resize(w, h); },
+    setShared(obj) { window.__RHINE_SHARED__ = obj; },
+    /**
+     * 切换浅色 / 深色。主题里"模式"其实是 Columns UI 的**活动配色集**：
+     * tokens.js 的 refreshTokens() 读 window.GetColourCUI(3)（配色集背景色），
+     * 再拿它去 tokens.json 里反查 MODE/SCHEME。所以这里改配色集 + 触发 on_colours_changed 即可。
+     */
+    setMode(mode) {
+      window.__RHINE_MODE__ = (mode === 'light' || mode === 'dark') ? mode : (window.__RHINE_MODE__ === 'light' ? 'dark' : 'light');
+      calibrateColours();
+      if (HANDLERS.on_colours_changed) { try { HANDLERS.on_colours_changed(); } catch (e) { console.error('[colours]', e); } }
+      dirty = true; schedule();
+      return window.__RHINE_MODE__;
+    },
+    getMode() { return window.__RHINE_MODE__ || 'dark'; },
+    getScheme() { return window.__RHINE_SCHEME__ || 'archive'; },
+    /** 曲库就绪：把之前排队的索引请求放出去（主题此时才会真正拿到 albums/tracks）
+     *  返回 true 表示确实放行了排队的请求 —— 宿主据此决定是否还需要再触发一次
+     *  on_library_items_added（避免同一份曲库被解析两遍） */
+    libraryReady() {
+      let flushed = false;
+      for (const w of workingWorkers) { try { if (w.__flush && w.__flush()) flushed = true; } catch (e) { } }
+      return flushed;
+    },
+    /** 宿主推送播放状态后，让主题重绘并触发对应的播放事件 */
+    transport(evt, arg) {
+      if (evt) { const h = HANDLERS[evt]; if (h) { try { h(arg); } catch (e) { console.error('[' + evt + ']', e); } } }
+      dirty = true; schedule();
+    },
+    /**
+     * 应用"配色集"（等价于原版导入 .fcl 预设后重读 Columns UI 颜色）：
+     * 方案 + 模式 → 背景色 → refreshTokens() 反查 → SCHEME/MODE/整套调色板
+     */
+    setLook({ scheme, mode } = {}) {
+      if (scheme) window.__RHINE_SCHEME__ = scheme;
+      if (mode === 'light' || mode === 'dark') window.__RHINE_MODE__ = mode;
+      calibrateColours();
+      if (HANDLERS.on_colours_changed) { try { HANDLERS.on_colours_changed(); } catch (e) { console.error('[colours]', e); } }
+      dirty = true; schedule();
+      return { scheme: window.__RHINE_SCHEME__ || 'archive', mode: window.__RHINE_MODE__ || 'dark' };
+    },
+    /** 主题运行状态（诊断用） */
+    debug() {
+      const ev = (e) => { try { return eval(e); } catch (err) { return 'ERR: ' + err.message; } };
+      return { handlers: Object.keys(HANDLERS), view: ev('typeof STATE !== "undefined" ? STATE.view : null'), mode: window.__RHINE_MODE__ || 'dark' };
+    },
+  };
+})();

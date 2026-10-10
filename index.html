@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RhinE — An Audio Archive（网页版移植 · 里程碑 1）</title>
+<style>
+  html,body{margin:0;height:100%;background:#0d0d0f;overflow:hidden;
+    font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:#8a8f98}
+  #stage{position:relative;width:100vw;height:100vh;overflow:hidden;background:#1b1c18}
+  .panel{position:absolute;border:0;background:transparent}
+  .native-playlist{display:flex;align-items:center;justify-content:center;background:#161713}
+  .np-note{color:#4c5158;font-size:11px;text-align:center;line-height:1.8;padding:8px}
+  #hud{position:fixed;left:10px;bottom:10px;z-index:9999;background:rgba(10,10,12,.86);
+    border:1px solid #2a2b28;border-radius:6px;padding:6px 10px;max-width:70vw;
+    font-size:11px;color:#9aa0a6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #hud button{margin-left:8px;background:#232420;color:#c9cdd2;border:1px solid #3a3c37;
+    border-radius:4px;padding:2px 7px;font:inherit;cursor:pointer}
+  #hud button:hover{background:#2d2f2a}
+  #hud button.on{background:#c8541f;color:#fff;border-color:#e06a2a}
+</style>
+</head>
+<body>
+  <div id="stage"></div>
+  <div id="hud">
+    <span id="log">正在启动…</span>
+    <button id="pick-btn" title="开启后点击画面上任意元素，会打印并复制该处的面板/坐标/命中区/颜色（也可随时按住 Alt 点击）">拾取元素</button>
+    <button onclick="document.getElementById('hud').style.display='none'">隐藏</button>
+  </div>
+  <script src="/app.js"></script>
+</body>
+</html>

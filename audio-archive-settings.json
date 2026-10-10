@@ -1,0 +1,12 @@
+{
+ "scheme": "archive",
+ "mode": "dark",
+ "view": "archive",
+ "archiveLayout": "array",
+ "archiveSort": "artist",
+ "archiveGroup": "genre",
+ "caseSkin": "white",
+ "archiveUnit": "albums",
+ "archiveSel": "{\"key\":\"miracle milk|c:\\\\music\\\\miracle milk\"}",
+ "seed": 1
+}
