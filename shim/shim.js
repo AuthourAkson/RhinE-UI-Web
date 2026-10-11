@@ -128,10 +128,18 @@
         ctx.beginPath(); ctx.ellipse(x + w / 2, y + h / 2, Math.abs(w) / 2 - lineWidth / 2, Math.abs(h) / 2 - lineWidth / 2, 0, 0, Math.PI * 2); ctx.stroke();
       },
       FillGradRect(x, y, w, h, angleDeg, c1, c2, focus) {
-        // Direct2D 的 angle 从 +x 轴逆时针；Canvas 的 createLinearGradient 用两点
+        // D2D 的 angle 从 +x 轴**顺时针**（屏幕 y 向下）：0° = 左→右，90° = 上→下，
+        // c1 在起点、c2 在终点。主题就是这么用的：
+        //   archive.js:649  0°,  透明→bg   阵列向右侧卡片淡出
+        //   archive.js:650  90°, 透明→bg   阵列底部的黑带向下淡出（播放栏上方那条）
+        //   grid.js:183     90°, bg→透明   网格内容自上而下淡入
+        // 跨度必须是"矩形在该方向上的投影" |w·cos| + |h·sin|：
+        //   旧实现用 max(w, h) 当跨度，那条 aw×80dp 的带子会拿到 1074px 的跨度，
+        //   只用到整条渐变的 7%，画出来几乎是一块纯色 —— 看起来"只透明、没渐变"。
         const a = (angleDeg || 0) * Math.PI / 180;
-        const cx = x + w / 2, cy = y + h / 2, r = Math.max(w, h);
-        const dx = Math.cos(a) * r / 2, dy = -Math.sin(a) * r / 2;
+        const cx = x + w / 2, cy = y + h / 2;
+        const span = Math.abs(w * Math.cos(a)) + Math.abs(h * Math.sin(a));
+        const dx = Math.cos(a) * span / 2, dy = Math.sin(a) * span / 2;
         const grad = ctx.createLinearGradient(cx - dx, cy - dy, cx + dx, cy + dy);
         grad.addColorStop(0, toCss(c1 >>> 0));
         grad.addColorStop(focus != null ? clamp(focus, 0, 1) : 1, toCss(c2 >>> 0));
