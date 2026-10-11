@@ -165,9 +165,15 @@
         drawTextImpl(ctx, String(text), font, colour, x, y, w, h, flags, strokeWidth || 1);
       },
       CalcTextWidth(text, font, fromZero) {
-        ctx.save(); ctx.font = font.Css; const m = ctx.measureText(String(text)); ctx.restore();
-        // fromZero=true 时主题要的是"最左到最右"的实宽（不带两边留白）
-        return fromZero ? (m.actualBoundingBoxLeft + m.actualBoundingBoxRight || m.width) : m.width;
+        ctx.save(); ctx.font = fontCssOf(font); const m = ctx.measureText(String(text)); ctx.restore();
+        // ⚠️ fromZero 要的是**步进宽度（advance）**，不是墨迹外框。
+        //    主题的带字距标签是逐字形画的（lib/text.js:53-62）：
+        //        adv = gr.CalcTextWidth(ch, f, true)   →   cx += adv + gap
+        //    这里曾经返回 actualBoundingBoxLeft + actualBoundingBoxRight（墨迹实宽），
+        //    等宽字体里每个字的步进是一样的，但"冒号"的墨迹只有 2~3px（步进 9px），
+        //    于是画笔推进不足，**右上角时钟的冒号和数字叠在一起**（用户实测）。
+        //    archive.js 用同一标志算等宽数字格（CalcTextWidth("0", f, true)）也要步进。
+        return m.width || 0;
       },
       CalcTextHeight(text, font) {
         ctx.save(); ctx.font = font.Css; const m = ctx.measureText(String(text)); ctx.restore();
@@ -278,8 +284,11 @@
         txt = txt.slice(0, lo) + ell;
       }
     }
-    if (strokeW) { ctx.lineWidth = strokeW; ctx.strokeText(txt, tx, ty, Math.abs(w) || undefined); }
-    ctx.fillText(txt, tx, ty, (single && w > 0) ? Math.abs(w) + 40 : undefined);
+    // ⚠️ 绝不能给 fillText/strokeText 传第 4 个参数（maxWidth）：宽度不够时浏览器会把
+    //    整行字**横向压缩**，字形互相挤压。Direct2D 的处理是裁掉/省略，不是压扁。
+    //    省略号已由上面的 DT_ELLIPSIS 分支自己裁好，这里不再压字。
+    if (strokeW) { ctx.lineWidth = strokeW; ctx.strokeText(txt, tx, ty); }
+    ctx.fillText(txt, tx, ty);
     ctx.restore();
   }
 

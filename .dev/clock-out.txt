@@ -1,0 +1,11 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/clock-probe.mjs
+=== 字宽测量（15px 时钟字体，等宽）===
+EXC ReferenceError: CalcTextWidth is not defined
+    at eval (eval at <anonymous> (:1:66), <anonymous>:5:14)
+    at eval (eval at <anonymous> (:1:66), <an
+
+整串 "18:17:56" 逐字步进: {"逐字":[9,9,9,9,9,9,9,9],"合计":72,"若按墨迹":null}
+
+时钟命中区（面板内）: {"id":"clock","x":1364,"y":16,"w":104,"h":36}  → 页面坐标 x=1364 y=16
+已存 .dev/clock-fixed.png（放大 3 倍）
+[chrome-run] 已关闭无头 Chrome
