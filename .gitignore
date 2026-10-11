@@ -18,3 +18,6 @@ node_modules/
 Thumbs.db
 .DS_Store
 desktop.ini
+
+# 拟合原版用的临时数据（原版缓存副本）
+.dev/orig-*.json

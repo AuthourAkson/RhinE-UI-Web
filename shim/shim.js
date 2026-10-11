@@ -795,15 +795,17 @@
             const end = Math.min(n, i + CHUNK), vals = new Float32Array(end - i);
             for (let b = i; b < end; b++) {
               const a0 = Math.floor(b * per), a1 = Math.min(len, Math.max(a0 + 1, Math.floor((b + 1) * per)));
-              // 每桶取 √(峰值 × RMS)。为什么不是纯峰值：1024 个桶摊到整首歌，每桶约 0.2 秒，
-              // 现代母带里每桶的峰值几乎都贴近满值 → 画出来是一条"条码"（实测均值 901/1000、
-              // 81% 的桶 >0.9）。纯 RMS 又太软（均值 692）。
-              // √(峰值×RMS) 与原版**同一首歌**的真实缓存（1024 个值）拟合最好：
-              // MAE 65.7、相关系数 0.912（纯峰值 92.6 / 0.844，纯 RMS 135.5 / 0.891），
-              // 均值 796 也贴近原版的 819，且保留瞬态起伏。
+              // 每桶取 (峰值 × RMS)^0.65。为什么不是纯峰值：1024 个桶摊到整首歌，每桶约 0.2 秒，
+              // 现代母带里每桶的峰值几乎都贴近满值 → 画出来是一条均匀"条码"
+              //（实测均值 901/1000、81% 的桶 >0.9，渲染后变异系数只有 0.191）。
+              // 主题会按最大值归一化，所以绝对大小无所谓，**只有形状**决定画面。
+              // 拿原版自己缓存的同一首歌 1024 个值当真值拟合（真值 CV = 0.244）：
+              //   纯峰值 CV 0.191 / 相关 0.844；纯 RMS CV 0.258 / 相关 0.891
+              //   √(峰值×RMS) CV 0.215 / 相关 0.912
+              //   (峰值×RMS)^0.65 CV 0.244 / 相关 0.909   ← 采用：起伏与原版一致
               let m = 0, sum = 0, cnt = 0;
               for (const d of chans) for (let k = a0; k < a1; k++) { const v = d[k] < 0 ? -d[k] : d[k]; if (v > m) m = v; sum += d[k] * d[k]; cnt++; }
-              vals[b - i] = Math.sqrt(m * Math.sqrt(sum / Math.max(1, cnt)));
+              vals[b - i] = Math.pow(m * Math.sqrt(sum / Math.max(1, cnt)), 0.65);
             }
             full.set(vals, i);
             const keep = onUpdate ? onUpdate(vals, i) : true;
