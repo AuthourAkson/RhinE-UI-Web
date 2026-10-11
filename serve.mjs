@@ -97,6 +97,12 @@ function buildScriptOrders(text) {
   // 网页版自己加的面板入口（不放进主题目录，保持 themes/audio-archive 与原版逐字节一致）：
   //   playlist —— 原版这里是 Columns UI 的原生 Playlist View，网页版用 DOM 复刻
   const EXTRA = { playlist: 'native/playlist.js' };
+  // ⚠️ 语言表是**运行时**按 UI_LANG 拼出来的路径（lib/i18n.js:32-35）：
+  //        const f = fb.ProfilePath + `…/lang/${UI_LANG}.js`;  if (utils.IsFile(f)) include(f);
+  //    含未解析变量、且 include(f) 的实参是变量，静态依赖图认不出来 → 中文表从来不会进页面，
+  //    于是"设了中文也还是英文"。这里把存在的语言表补在 i18n.js **之后**（I18N 在那里声明）、
+  //    其它用 tr() 的文件之前。en 不需要表（英文原文即 key）。
+  const LANG_TABLES = ['zh-CN', 'ja'].map((l) => `${THEME}js/lib/lang/${l}.js`).filter((p) => text[p]);
   for (const [name, entry] of [...entries.map((n) => [n, `${THEME}js/${n}.js`]), ...Object.entries(EXTRA)]) {
     if (!text[entry]) continue;
     const seen = new Set();
@@ -108,6 +114,8 @@ function buildScriptOrders(text) {
       order.push(rel);
     };
     visit(entry, 0);
+    const i18nAt = order.indexOf(`${THEME}js/lib/i18n.js`);
+    if (i18nAt >= 0) order.splice(i18nAt + 1, 0, ...LANG_TABLES.filter((p) => !order.includes(p)));
     orders[name] = order;
   }
   return orders;

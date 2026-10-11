@@ -919,6 +919,27 @@
     },
     NotifyOthers(name, info) { HOST.other(name, info); },
     Reload() { location.reload(); },
+    /**
+     * 主题的 i18n.js 用 ActiveXObject("WScript.Shell") 读注册表拿 **Windows 显示语言**
+     * （lib/i18n.js:14-17：PreferredUILanguages → 回退 LocaleName）。
+     * 浏览器里没有这个 API，主题的 try/catch 会吞掉异常并回退成 "en" ——
+     * 结果就是"界面永远是英文，语言菜单选了中文也没用"。
+     * 这里给一个最小替身：把语言标签从 navigator 报回去（中文 Windows → "zh-CN"），
+     * 主题的 systemLang() 就能得出正确结论，默认语言随系统。
+     */
+    ActiveXObject(progId) {
+      if (!/WScript\.Shell/i.test(String(progId))) throw new Error('ActiveXObject 不支持: ' + progId);
+      const tag = () => (navigator.languages && navigator.languages[0]) || navigator.language || 'en';
+      return {
+        RegRead(key) {
+          const k = String(key).toLowerCase();
+          if (k.includes('preferreduilanguages')) return tag();   // 主题会 split(/[,\s]/)[0]
+          if (k.includes('localename')) return tag();
+          throw new Error('未实现的注册表项: ' + key);
+        },
+        RegWrite() { }, ExpandEnvironmentStrings: (s) => s, Run() { }, Popup() { },
+      };
+    },
     GetColourCUI(type) { return COLOURS[type] != null ? COLOURS[type] : 0xFF000000; },
     GetColourDUI(type) { return COLOURS[type] != null ? COLOURS[type] : 0xFF000000; },
     SetCursor(id) { if (CANVAS) CANVAS.style.cursor = CURSORS[id] || 'default'; },
@@ -929,14 +950,159 @@
     ShowConfigure() { },
   };
   const CURSORS = { 0: 'default', 1: 'default', 2: 'text', 3: 'pointer', 4: 'wait', 5: 'crosshair', 6: 'pointer', 7: 'default', 8: 'nwse-resize', 9: 'nesw-resize', 10: 'ew-resize', 11: 'ns-resize', 12: 'move', 13: 'not-allowed' };
-  function popupStub() {
+
+  /* ============================================================== 弹出菜单 -- *
+   * 主题的菜单是**同步**用法（header.js:396 等）：
+   *     theme.AppendTo(root, 0, "Audio Archive");
+   *     const id = root.TrackPopupMenu(x, y, 0);
+   *     if (id >= 450 && …) { … }            ← 那一长串分支紧接着执行
+   * DOM 菜单天生异步，所以分两步走：
+   *   ① TrackPopupMenu 先把菜单**画出来**，返回 0 —— 主题那串分支全落空，界面不受影响；
+   *   ② 用户点选后记下 id，然后**重放打开菜单时的那次输入事件**（同一个 handler、同样的参数）：
+   *      这一次 TrackPopupMenu 立刻返回该 id，主题的同步分支就真的执行了。
+   * 为什么不改成回调：`if (id === …)` 链就写在输入处理函数体内，只记下 id 没有接收方。
+   * 重放是安全的：输入处理函数本身是幂等的（只是重新构造一次菜单并走分支）。
+   */
+  let CUR_INPUT = null;      // 正在派发的输入事件 { name, args, ret }
+  let MENU_PENDING = null;   // 已点选、等待重放的菜单 id
+  let MENU_INPUT = null;     // 打开当前菜单时的那次输入
+  let MENU_DOM = null;       // 正在显示的菜单根节点
+  const DISPATCH = { ev: null, evRet: null };   // 由 bindEvents() 填上
+
+  const MENU_CSS = 'position:fixed;z-index:2147483000;min-width:190px;max-height:82vh;overflow:auto;padding:4px 0;' +
+    'background:#1b1c18;color:#f2f1ec;border:1px solid rgba(242,241,236,.22);' +
+    'box-shadow:0 12px 34px rgba(0,0,0,.6);font:12px/1.6 "Geist Mono","Microsoft YaHei UI",monospace;' +
+    'white-space:nowrap;user-select:none;-webkit-user-select:none';
+
+  // ⚠️⚠️ 菜单必须画在**顶层页面**上，不能画在面板自己的 document 里：
+  //      每个面板只是一个 iframe，header 只有 73px 高 —— 菜单画在里面会被 iframe 裁掉，
+  //      下半截既看不见也点不到（实测：菜单确实生成了，但 y>73 的行点不到，
+  //      因为那些坐标落在相邻面板上）。面板与宿主同源，所以直接用 window.top。
+  const menuWin = () => { try { const t = window.top; return t && t.document && t.document.body ? t : window; } catch (e) { return window; } };
+  const menuDoc = () => menuWin().document;
+  // 面板内坐标 → 顶层页面坐标（菜单坐标来自主题的输入回调，是面板内的）
+  const toPageXY = (x, y) => {
+    try { const fe = window.frameElement; if (fe) { const r = fe.getBoundingClientRect(); return [r.left + x, r.top + y]; } } catch (e) { }
+    return [x, y];
+  };
+
+  function closeMenu() {
+    if (MENU_DOM) { MENU_DOM.remove(); MENU_DOM = null; }
+    const d = menuDoc();
+    d.removeEventListener('mousedown', onMenuOutside, true);
+    d.removeEventListener('keydown', onMenuKey, true);
+    (menuWin()).removeEventListener('resize', closeMenu, true);
+  }
+  function onMenuOutside(e) { if (MENU_DOM && !MENU_DOM.contains(e.target)) closeMenu(); }
+  function onMenuKey(e) { if (e.key === 'Escape') { e.stopPropagation(); closeMenu(); } }
+
+  function menuPick(id) {
+    const input = MENU_INPUT;
+    closeMenu();
+    if (!input || !DISPATCH.evRet) return;
+    MENU_PENDING = id;
+    try { input.ret ? DISPATCH.evRet(input.name, ...input.args) : DISPATCH.ev(input.name, ...input.args); }
+    finally { MENU_PENDING = null; MENU_INPUT = null; }
+  }
+
+  // 一个菜单节点；子菜单挂在行上，鼠标移入时在右侧展开
+  function menuNode(popup) {
+    const box = document.createElement('div');
+    box.style.cssText = MENU_CSS;
+    box.__popup = popup;                 // 诊断用：从 DOM 就能查到这一层菜单的条目
+    for (const it of popup.__items) {
+      if (it.k === 'sep') {
+        const s = document.createElement('div');
+        s.style.cssText = 'height:1px;margin:4px 10px;background:rgba(242,241,236,.18)';
+        box.appendChild(s);
+        continue;
+      }
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:3px 12px 3px 4px;cursor:default';
+      const part = String(it.text == null ? '' : it.text);
+      const tab = part.indexOf('\t');
+      const main = tab >= 0 ? part.slice(0, tab) : part;
+      const hint = tab >= 0 ? part.slice(tab + 1) : '';
+      const mark = document.createElement('span');
+      mark.textContent = it.k === 'sub' ? '' : (it.checked ? '●' : '');
+      mark.style.cssText = 'width:12px;flex:0 0 12px;color:#ff7a1a;font-size:10px;text-align:center';
+      const name = document.createElement('span');
+      name.textContent = main;
+      name.style.cssText = 'flex:1 1 auto' + (it.disabled ? ';opacity:.4' : '');
+      row.appendChild(mark); row.appendChild(name);
+      if (hint) { const h = document.createElement('span'); h.textContent = hint; h.style.cssText = 'color:rgba(242,241,236,.5);font-size:11px'; row.appendChild(h); }
+      if (it.k === 'sub') { const a = document.createElement('span'); a.textContent = '▸'; a.style.cssText = 'color:rgba(242,241,236,.6)'; row.appendChild(a); }
+      let sub = null;
+      const openSub = () => {
+        if (sub) sub.remove();
+        sub = null;
+        if (it.k !== 'sub') return;
+        const W = menuWin();
+        sub = menuNode(it.menu);
+        sub.style.display = 'block';
+        const r = row.getBoundingClientRect();
+        sub.style.left = Math.round(r.right - 4) + 'px';
+        sub.style.top = Math.round(r.top - 5) + 'px';
+        (MENU_DOM || menuDoc().body).appendChild(sub);
+        const sr = sub.getBoundingClientRect();
+        if (sr.right > W.innerWidth - 4) sub.style.left = Math.round(Math.max(4, r.left - sr.width + 4)) + 'px';
+        if (sr.bottom > W.innerHeight - 4) sub.style.top = Math.round(Math.max(4, r.top - sr.height + 22)) + 'px';   // 底部放不下就往上顶
+      };
+      row.addEventListener('mouseenter', () => { row.style.background = 'rgba(242,241,236,.12)'; openSub(); });
+      row.addEventListener('mouseleave', () => { row.style.background = ''; if (sub) { sub.remove(); sub = null; } });
+      // 子菜单行：点击也展开（悬停在某些输入路径下不会触发 mouseenter，点一下更稳）
+      row.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (it.k === 'sub') { openSub(); return; }
+        if (it.disabled) return;
+        menuPick(it.id);
+      });
+      box.appendChild(row);
+    }
+    return box;
+  }
+
+  function showMenu(popup, x, y) {
+    closeMenu();
+    const W = menuWin(), d = menuDoc();
+    MENU_DOM = menuNode(popup);
+    const [px, py] = toPageXY(x, y);
+    MENU_DOM.style.left = Math.round(px) + 'px';
+    MENU_DOM.style.top = Math.round(py) + 'px';
+    d.body.appendChild(MENU_DOM);
+    const r = MENU_DOM.getBoundingClientRect();
+    if (r.right > W.innerWidth - 4) MENU_DOM.style.left = Math.round(Math.max(4, W.innerWidth - r.width - 6)) + 'px';
+    if (r.bottom > W.innerHeight - 4) MENU_DOM.style.top = Math.round(Math.max(4, W.innerHeight - r.height - 6)) + 'px';
+    setTimeout(() => {
+      d.addEventListener('mousedown', onMenuOutside, true);
+      d.addEventListener('keydown', onMenuKey, true);
+      W.addEventListener('resize', closeMenu, true);
+    }, 0);
+  }
+
+  function createPopup() {
     const p = {
-      AppendMenuItem: () => p, AppendMenuSeparator: () => p, AppendTo: () => p,
-      CheckMenuItem: () => p, CheckMenuRadioItem: () => p, EnableMenuItem: () => p,
-      TrackPopupMenu: () => 0, Dispose: () => { }, SetCurFocus: () => p,
+      __items: [],
+      AppendMenuItem(flags, id, text) { this.__items.push({ k: 'item', flags: flags | 0, id: id | 0, text, checked: !!(flags & 0x8), disabled: !!(flags & 0x3) }); return this; },
+      AppendMenuSeparator() { this.__items.push({ k: 'sep' }); return this; },
+      AppendTo(parent, flags, text) { parent.__items.push({ k: 'sub', flags: flags | 0, text, menu: this }); return this; },
+      CheckMenuItem(flags, id, on) { const it = this.__items.find((i) => i.k === 'item' && i.id === id); if (it) it.checked = !!on; return this; },
+      CheckMenuRadioItem(first, last, on) { for (const i of this.__items) if (i.k === 'item' && i.id >= first && i.id <= last) i.checked = i.id === on; return this; },
+      EnableMenuItem(flags, id, on) { const it = this.__items.find((i) => i.k === 'item' && i.id === id); if (it) it.disabled = !on; return this; },
+      SetCurFocus() { return this; },
+      Dispose() { return this; },
+      TrackPopupMenu(x, y) {
+        if (MENU_PENDING !== null) { const id = MENU_PENDING; MENU_PENDING = null; return id; }   // ② 重放：把选择交回主题
+        MENU_INPUT = CUR_INPUT ? { name: CUR_INPUT.name, args: CUR_INPUT.args.slice(), ret: CUR_INPUT.ret } : null;
+        if (!MENU_INPUT) return 0;      // 不是在输入处理里打开的（例如启动时构建），不弹
+        showMenu(this, x, y);           // ① 先画出来，返回 0
+        return 0;
+      },
     };
+    p.TrackPopupMenuEx = (x, y) => p.TrackPopupMenu(x, y);
     return p;
   }
+  function popupStub() { return createPopup(); }
 
   /* =============================================================== 颜色表 -- */
 
@@ -999,6 +1165,27 @@
     const g = window;
     g.d2d = d2d; g.fb = fb; g.plman = plman; g.utils = utils;
     Object.assign(window, windowShim);   // 面板脚本里的 window.X 就是宿主 API（注意：不能再赋回 window.window，它是只读 getter）
+    /**
+     * ⚠️ 单独再赋值一次（而不是只放在 windowShim 里）：主题的 i18n.js:14 是
+     *    `const sh = new ActiveXObject("WScript.Shell")`，需要它**可被 new**。
+     *    放在 windowShim 对象里时实测报 "ActiveXObject is not a constructor"，
+     *    于是主题 catch 掉、SYSTEM_LANG 退回 "en" → 界面永远是英文。
+     *    这里用函数表达式明确建一个构造函数，把 Windows 显示语言从 navigator 报回去
+     *    （中文系统 → "zh-CN" → i18n.js 的 systemLang() 得到 zh-CN → 默认中文）。
+     */
+    g.ActiveXObject = function ActiveXObject(progId) {
+      if (!/WScript\.Shell/i.test(String(progId))) throw new Error('ActiveXObject 不支持: ' + progId);
+      const lang = () => (navigator.languages && navigator.languages[0]) || navigator.language || 'en';
+      return {
+        RegRead(key) {
+          const k = String(key).toLowerCase();
+          if (k.indexOf('preferreduilanguages') >= 0) return lang();   // 主题会 split(/[,\s]/)[0]
+          if (k.indexOf('localename') >= 0) return lang();
+          throw new Error('未实现的注册表项: ' + key);
+        },
+        RegWrite() { }, ExpandEnvironmentStrings(s) { return s; }, Run() { }, Popup() { },
+      };
+    };
     g.DT_SINGLE = DT.SINGLELINE | DT.NOPREFIX | DT.VCENTER;
     g.DT_CENTER_SINGLE = g.DT_SINGLE | DT.CENTER;
     g.DT_RIGHT_SINGLE = g.DT_SINGLE | DT.RIGHT;
@@ -1093,7 +1280,12 @@
   /* ================================================== 事件转发到主题 -- */
 
   function bindEvents() {
-    const ev = (fn, ...args) => { const h = HANDLERS[fn]; if (h) { try { h(...args); } catch (e) { console.error('[' + fn + ']', e); } } };
+    const ev = (fn, ...args) => {
+      const h = HANDLERS[fn]; if (!h) return;
+      const prev = CUR_INPUT; CUR_INPUT = { name: fn, args, ret: false };   // 菜单点选后按它重放
+      try { h(...args); } catch (e) { console.error('[' + fn + ']', e); } finally { CUR_INPUT = prev; }
+    };
+    DISPATCH.ev = ev;
     const mask = (e) => (e.buttons & 1 ? MK.LBUTTON : 0) | (e.buttons & 2 ? MK.RBUTTON : 0) | (e.buttons & 4 ? MK.MBUTTON : 0) | (e.shiftKey ? MK.SHIFT : 0) | (e.ctrlKey ? MK.CONTROL : 0);
     const pos = (e) => { const r = CANVAS.getBoundingClientRect(); return [Math.round(e.clientX - r.left), Math.round(e.clientY - r.top)]; };
 
@@ -1165,7 +1357,12 @@
       else if (m.event === 'colours') { calibrateColours(); if (HANDLERS.on_colours_changed) HANDLERS.on_colours_changed(); }
     });
   }
-  function evRet(fn, ...args) { const h = HANDLERS[fn]; if (!h) return undefined; try { return h(...args); } catch (e) { console.error('[' + fn + ']', e); } }
+  function evRet(fn, ...args) {
+    const h = HANDLERS[fn]; if (!h) return undefined;
+    const prev = CUR_INPUT; CUR_INPUT = { name: fn, args, ret: true };      // 菜单点选后按它重放
+    try { return h(...args); } catch (e) { console.error('[' + fn + ']', e); } finally { CUR_INPUT = prev; }
+  }
+  DISPATCH.evRet = evRet;
 
   /* ================================================================ boot -- */
 
