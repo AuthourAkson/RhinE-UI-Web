@@ -44,7 +44,18 @@
 
   const toCss = (c) => `rgba(${(c >>> 16) & 255},${(c >>> 8) & 255},${c & 255},${(((c >>> 24) & 255) / 255).toFixed(4)})`;
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-  const norm = (p) => String(p == null ? '' : p).replace(/\\/g, '/').replace(/^\/+/, '');
+  /** 路径归一化：反斜杠 → 正斜杠、去掉前导斜杠，并把**项目根前缀**剥掉。
+   *  ⚠️ 后一步很关键：主题按 fb2k 的完整路径去找 sidecar 文件 —— 例如
+   *  lib/lyrics.js:57 把 `D:\…\musiclab\某曲.mp3` 换成 `.lrc` 再问 utils.IsFile()，
+   *  而清单（manifest.text）的键是**相对仓库根**的（`musiclab/某曲.lrc`）。
+   *  不剥前缀就永远查不到，表现为"放了 .lrc 也不显示歌词"。
+   *  root 由服务端在 /__manifest.json 里给出（构建时赋值给 MANIFEST）。 */
+  const norm = (p) => {
+    let s = String(p == null ? '' : p).replace(/\\/g, '/');
+    const root = (MANIFEST && MANIFEST.root) || (typeof window !== 'undefined' && window.__RHINE_ROOT__) || '';
+    if (root && s.toLowerCase().startsWith(String(root).toLowerCase())) s = s.slice(String(root).length);
+    return s.replace(/^\/+/, '');
+  };
 
   let CFG = null, MANIFEST = null, CANVAS = null, CTX = null, DPR = 1;
   // 版本标记：面板里跑的是哪一版 shim，一查就知道（排查缓存问题用）
@@ -470,7 +481,10 @@
     return {
       title: t.title || '', artist: t.artist || '', 'album artist': t.albumArtist || t.artist || '',
       album: t.album || '', genre: t.genre || '', date: t.year || '', year: t.year || '',
-      codec: t.codec || '', bitspersample: t.bits || '', samplerate: t.rate || '', bitrate: t.kbps ? t.kbps * 1000 : '',
+      // ⚠️ foobar2000 的 TitleFormat `%bitrate%` 单位是 **kbps**（320 kbps 的 MP3 → "320"），
+      //    而 file-info 的 `bitrate` 字段单位是 bps。之前这里乘了 1000，卡片上就显示成
+      //    "BITRATE 320,000"（实测）。makeFileInfo() 里的 Info* 才该用 bps。
+      codec: t.codec || '', bitspersample: t.bits || '', samplerate: t.rate || '', bitrate: t.kbps || '',
       lossless: t.lossless ? '1' : '', length: `${m}:${String(s).padStart(2, '0')}`,
       length_seconds: String(Math.round(t.length || 0)), length_seconds_fp: String(t.length || 0),
       discnumber: t.disc || '1', tracknumber: t.track || '', added: t.added || '',
@@ -732,6 +746,9 @@
   // 只是不跨会话保留 —— 主题读不到缓存时会自己重新解码（waveform.js:25 的分支）。
   const CACHE_FILES = new Map();
   const isCachePath = (k) => k.startsWith('audio-archive-cache/') || k.startsWith('audio-archive-cache\\');
+  // MANIFEST.files 是完整文件清单（含音频等二进制），用 Set 兜住 O(1) 查询
+  let FILE_SET = null;
+  const fileSet = () => (FILE_SET || (FILE_SET = new Set(MANIFEST.files || [])));
 
   const utils = {
     // 主题会把设置写进 <profile>\audio-archive-settings.json（utils.WriteTextFile → localStorage 覆盖层），
@@ -741,6 +758,11 @@
       const k = norm(p);
       if (Object.prototype.hasOwnProperty.call(MANIFEST.text, k)) return true;
       if (Object.prototype.hasOwnProperty.call(MANIFEST.images, k)) return true;
+      // ⚠️ 音频这类二进制文件只在 MANIFEST.files（完整文件清单）里，不在 text/images 里。
+      //    漏掉这一条，主题的 `T.missing = /^[a-z]:\\/i.test(path) && !utils.IsFile(path)`
+      //    （lib/nowplaying.js:40）就会把真实存在的曲目判成"文件不存在" →
+      //    03 LYRICS 中间画出一整块 SYSTEM WARNING · FILE NOT FOUND（实测踩到过）。
+      if (fileSet().has(k)) return true;
       if (isCachePath(k)) return CACHE_FILES.has(k);
       try { return localStorage.getItem('rhine:file:' + k) != null; } catch (e) { return false; }
     },

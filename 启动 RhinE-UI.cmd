@@ -18,7 +18,7 @@ set "PORT=8300"
 set "DEMO=1"
 if /i "%~1"=="plain" set "DEMO="
 if not "%~1"=="" if /i not "%~1"=="plain" set "PORT=%~1"
-if not exist ".dev\music" set "DEMO="
+if not exist "musiclab" if not exist ".dev\music" set "DEMO="
 
 set "URL=http://127.0.0.1:!PORT!/"
 if defined DEMO set "URL=http://127.0.0.1:!PORT!/?demo=1"

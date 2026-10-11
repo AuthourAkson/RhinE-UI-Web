@@ -27,7 +27,7 @@ const MIME = {
   '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.ttf': 'font/ttf', '.woff2': 'font/woff2',
   '.svg': 'image/svg+xml', '.txt': 'text/plain; charset=utf-8', '.md': 'text/markdown; charset=utf-8',
 };
-const TEXT_EXT = new Set(['.js', '.mjs', '.json', '.txt', '.md', '.css', '.html', '.fcl']);
+const TEXT_EXT = new Set(['.js', '.mjs', '.json', '.txt', '.md', '.css', '.html', '.fcl', '.lrc', '.srt']);
 
 /* ---------------------------------------------------------------- 图片尺寸（文件头解析） -- */
 function pngSize(buf) {
@@ -139,7 +139,9 @@ function buildManifest() {
     }
   };
   walk(ROOT);
-  return { text, images, files, bytes, scripts: buildScriptOrders(text), built: new Date().toISOString() };
+  // root 给面板用：主题按 fb2k 的完整路径（D:\…\musiclab\a.lrc）找 sidecar 文件，
+  // 而清单的键是相对仓库根的（musiclab/a.lrc），面板靠 root 把前缀剥掉才能命中。
+  return { text, images, files, bytes, root: ROOT.replace(/\\/g, '/') + '/', scripts: buildScriptOrders(text), built: new Date().toISOString() };
 }
 
 let cache = null;
@@ -147,30 +149,40 @@ const manifest = () => (cache ??= buildManifest());
 
 /* ------------------------------------------------ 演示/自测用的"音乐库"（HTTP 提供器） -- */
 // 真实用法是 File System Access 选目录；但无头浏览器点不了原生目录对话框，
-// 所以另给一条 HTTP 通道：扫 .dev/music 下的音频，列成清单，前端按 URL 取文件。
-// path 用 **Windows 反斜杠形式** —— 主题的 albumKeyOf()/albumDir() 按 "\\" 切分路径，
-// 用正斜杠会让同一张专辑被拆成多个 key。
-const MUSIC_DIR = path.join(ROOT, '.dev', 'music');
+// 所以另给一条 HTTP 通道，按 URL 取文件。
+// 目录优先级：仓库根下的 musiclab/（放测试音乐的地方，默认）、.dev/music（旧演示曲库）。
+//
+// ⚠️ path 必须是**真实绝对路径**（D:\…\musiclab\x.mp3），不能伪造：
+//    主题的歌词/封面是"按音频文件路径推同名文件"来找的（lib/lyrics.js:57 用
+//    path 换后缀取 .lrc），伪造路径（如 C:\Music\…）永远推不出仓库里真实存在的 .lrc。
+//    用反斜杠形式还有个历史原因：主题的 albumKeyOf()/albumDir() 按 "\\" 切分路径。
+const MUSIC_DIRS = [path.join(ROOT, 'musiclab'), path.join(ROOT, '.dev', 'music')];
 const AUDIO_EXT = new Set(['.mp3', '.flac', '.m4a', '.mp4', '.ogg', '.oga', '.opus', '.wav', '.aac']);
 function musicLibrary() {
   const out = [];
-  if (!fs.existsSync(MUSIC_DIR)) return out;
-  const walk = (dir, rel) => {
-    for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
-      const full = path.join(dir, ent.name);
+  const dir = MUSIC_DIRS.find((d) => fs.existsSync(d));
+  if (!dir) return out;
+  const rel0 = path.relative(ROOT, dir).replace(/\\/g, '/');       // 'musiclab' 或 '.dev/music'
+  const walk = (cur, rel) => {
+    for (const ent of fs.readdirSync(cur, { withFileTypes: true })) {
+      const full = path.join(cur, ent.name);
       const r = rel ? rel + '\\' + ent.name : ent.name;
       if (ent.isDirectory()) { walk(full, r); continue; }
       if (!AUDIO_EXT.has(path.extname(ent.name).toLowerCase())) continue;
       out.push({
-        path: 'C:\\Music\\' + r,                                            // 反斜杠：主题的专辑分组依赖它
-        url: '/.dev/music/' + (rel ? rel.replace(/\\/g, '/') + '/' : '') + encodeURIComponent(ent.name),
+        path: full,                                                   // 真实路径：歌词/封面靠它推同名文件
+        url: '/' + rel0 + '/' + (rel ? rel.replace(/\\/g, '/') + '/' : '') + encodeURIComponent(ent.name),
         size: fs.statSync(full).size,
       });
     }
   };
-  walk(MUSIC_DIR, '');
+  walk(dir, '');
   return out;
 }
+const MUSIC_LABEL = () => {
+  const d = MUSIC_DIRS.find((x) => fs.existsSync(x));
+  return d ? path.relative(ROOT, d).replace(/\\/g, '/') : '(无)';
+};
 
 /* ---------------------------------------------------------------------------- HTTP -- */
 const server = http.createServer((req, res) => {
@@ -190,7 +202,7 @@ const server = http.createServer((req, res) => {
   if (pathname === '/__music.json') {
     const lib = musicLibrary();
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-    console.log(`  music library: ${lib.length} 个音频文件（.dev/music）`);
+    console.log(`  music library: ${lib.length} 个音频文件（${MUSIC_LABEL()}）`);
     return res.end(JSON.stringify(lib));
   }
 

@@ -11,13 +11,20 @@ D:\AgentTestLab\RhinE-UI\
 ├── shim/shim.js        JSplitter → 浏览器 适配层（d2d / gr / fb / plman / utils / window）
 ├── workers/            真 Web Worker：曲库索引 + 零依赖标签解析器（tags.js）
 ├── themes/audio-archive/   主题副本（js/ tokens/ columns/ assets/{fonts,render,intro}）
+├── musiclab/           自己的测试音乐放这里（默认曲库；同样因版权被 .gitignore 排除）
 ├── audio-archive-settings.json  首次打开的默认设置（= 原版参考状态：ALBUMS + GENRE 分组）
 └── .dev/               开发用探针与诊断脚本（探针、canvas 导出、布局像素对比）
 ```
 
-> **演示曲库不含在仓库里**：`.dev/music/` 里的音频有版权，已被 `.gitignore` 排除。
-> 想用 `?demo=1` 自测，自己往 `.dev/music/` 放几首音频（或用 `.dev/make-fixtures.sh` 造测试专辑）；
+> **演示曲库不含在仓库里**：`musiclab/`（默认）和 `.dev/music/`（旧演示）里的音频有版权，已被 `.gitignore` 排除。
+> 想用 `?demo=1` 自测，往 `musiclab/` 放几首音频即可（`node serve.mjs` 启动时自动扫，无需改配置）；
 > 正常用法是在页面上点 `+ ADD MUSIC FOLDER` 选自己的音乐目录。
+
+> **歌词**：主题按"同名文件"找 `.lrc`（也支持内嵌 LYRICS/SYNCEDLYRICS 标签、以及在线 LRCLIB）。
+> 所以 `.lrc` 必须与音频**同名同目录**，例如
+> `musiclab\Mili - world.execute (me) ;.mp3` ↔ `musiclab\Mili - world.execute (me) ;.lrc`。
+> 清单（`/__manifest.json`）会把 `.lrc`/`.srt` 当文本收录，并给出 `root`，
+> 面板据此把主题推出来的绝对路径映射回仓库内相对路径。
 
 ## 跑起来
 
