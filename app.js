@@ -641,7 +641,22 @@ audio.addEventListener('play', () => { SHARED.transport.playing = true; SHARED.t
 audio.addEventListener('pause', () => { SHARED.transport.playing = false; SHARED.transport.paused = true; pushShared(); emit('on_playback_pause', true); });
 audio.addEventListener('ended', () => { SHARED.transport.playing = false; pushShared(); emit('on_playback_stop', 0); nextTrack(1); });
 audio.addEventListener('timeupdate', () => { SHARED.transport.time = audio.currentTime; pushShared(); });
-setInterval(() => { if (!audio.paused) emit('on_playback_time', Math.floor(audio.currentTime)); }, 1000);
+// ⚠️⚠️ 流畅播放（对齐原版手感）：原版由 foobar2000 **每秒**回调一次 on_playback_time，
+//   但主题自己有一套动画时钟（lib/motion.js 的 Clock 每 8ms 一帧，播放时持续跑），
+//   每一帧都会重绘并重新读 fb.PlaybackTime，所以播放条看起来是连续跑的。
+//   网页版之前只在 1 秒的 setInterval 里 emit 一次，而且 SHARED.transport.time 只在
+//   <audio> 的 timeupdate（约 4Hz）里更新 —— 于是播放条与 SIGNAL 轨迹的进度都是"1 秒一跳"。
+//   现在按帧写时间（所有面板读 fb.PlaybackTime 都拿到当前值）并按帧通知 transport 重画游标；
+//   on_playback_time 在主题里只有 transport.js 一个订阅者（repaintRuler，很轻），所以每帧发是安全的。
+let playRAF = 0;
+function playbackTick() {
+  if (!audio.paused) {
+    SHARED.transport.time = audio.currentTime || 0;
+    emit('on_playback_time', Math.floor(SHARED.transport.time));
+  }
+  playRAF = requestAnimationFrame(playbackTick);
+}
+playRAF = requestAnimationFrame(playbackTick);
 
 let currentMode = 'dark';
 let currentScheme = 'archive';

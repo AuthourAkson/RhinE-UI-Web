@@ -205,6 +205,15 @@
         // __dpr 倍，所以源坐标要乘回去，否则会只取到左上角 1/__dpr（实测症状：淡出色卡只剩一角）
         const sd = img.__dpr || 1;
         const rx = (sx || 0) * sd, ry = (sy || 0) * sd, rw = (sw || img.Width) * sd, rh = (sh || img.Height) * sd;
+        // ⚠️⚠️ 吸附到**设备像素网格**：主题的标签是画进位图再整张贴回来的，而它多数位置只
+        //    Math.round 到整数 CSS px。dpr = 1.5 时，**奇数** CSS 坐标 × 1.5 落在半设备像素上
+        //    → 整张位图被重采样 → 文字发虚（约一半的标签中招，用户反馈"很多关键字不够清晰"；
+        //    1× 屏上也看不出来，所以只有高分屏缩放才有）。把目标位置与尺寸吸附到 1/dpr 网格后，
+        //    位图与画布设备像素一一对应，笔画就是硬的（最多移动 0.33 CSS px，肉眼不可见）。
+        if (!angle && DPR > 1) {
+          const q = (v) => Math.round(v * DPR) / DPR;
+          dx = q(dx); dy = q(dy); dw = q(dw); dh = q(dh);
+        }
         ctx.save();
         if (angle) {   // D2D 的角度是"弧度"（正数顺时针），绕目标矩形中心
           ctx.translate(dx + dw / 2, dy + dh / 2); ctx.rotate(angle); ctx.translate(-dw / 2, -dh / 2);

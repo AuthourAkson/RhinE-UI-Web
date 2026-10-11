@@ -1,0 +1,4 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/orig-crop2.mjs
+{"图":"2558x1348","亮像素":19647,"包围盒":{"x":1151,"y":607,"w":1373,"h":721}}
+已存 .dev/orig-buttons-zoom.png（4 倍，最近邻）
+[chrome-run] 已关闭无头 Chrome
