@@ -1,0 +1,16 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/point-probe.mjs
+面板内(120,300)  画布像素=0,0,0,0
+    链: DIV.-[rgba(0, 0, 0, 0)] < BODY.-[rgba(0, 0, 0, 0)] < HTML.-[rgba(0, 0, 0, 0)]
+面板内(600,300)  画布像素=0,0,0,0
+    链: DIV.-[rgba(0, 0, 0, 0)] < BODY.-[rgba(0, 0, 0, 0)] < HTML.-[rgba(0, 0, 0, 0)]
+面板内(800,50)  画布像素=0,0,0,0
+    链: DIV.prow[rgba(0, 0, 0, 0)] < DIV.-[rgba(0, 0, 0, 0)] < DIV.-[rgba(0, 0, 0, 0)] < BODY.-[rgba(0, 0, 0, 0)] < HTML.-[rgba(0, 0, 0, 0)]
+面板内(800,300)  画布像素=0,0,0,0
+    链: DIV.-[rgba(0, 0, 0, 0)] < BODY.-[rgba(0, 0, 0, 0)] < HTML.-[rgba(0, 0, 0, 0)]
+面板内(800,550)  画布像素=0,0,0,0
+    链: DIV.-[rgba(0, 0, 0, 0)] < BODY.-[rgba(0, 0, 0, 0)] < HTML.-[rgba(0, 0, 0, 0)]
+面板内(1020,300)  画布像素=0,0,0,0
+    链: DIV.-[rgba(0, 0, 0, 0)] < BODY.-[rgba(0, 0, 0, 0)] < HTML.-[rgba(0, 0, 0, 0)]
+画布: 1043x608 后备 1565x912 CSS尺寸 1043pxx608px
+scroll/layer/sizer: scroll=0,0 1043x608  layer=0,0 1043x0  sizer=0,0 1x216
+[chrome-run] 已关闭无头 Chrome

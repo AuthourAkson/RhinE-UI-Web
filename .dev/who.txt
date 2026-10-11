@@ -1,0 +1,22 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/light-who.mjs
+页面坐标采样点: 467 267 （页面截图上的像素值）
+header: 不在范围内
+transport: 不在范围内
+stage: 不在范围内
+manager: 不在范围内
+head: 不在范围内
+playlist: 面板内(179,72) 画布像素=rgba(0,0,0,0)
+card: 不在范围内
+tip: 不在范围内
+fx: 不在范围内
+root: 面板内(467,267) 画布像素=rgba(11,11,11,255)
+
+=== 沿 x=467 竖扫（页面坐标 → 各面板画布像素）===
+y=200  playlist=0,0,0,0  root=11,11,11,255
+y=230  playlist=0,0,0,0  root=11,11,11,255
+y=260  playlist=0,0,0,0  root=11,11,11,255
+y=300  playlist=0,0,0,0  root=11,11,11,255
+y=360  playlist=0,0,0,0  root=11,11,11,255
+y=420  playlist=0,0,0,0  root=11,11,11,255
+y=470  playlist=0,0,0,0  root=11,11,11,255
+[chrome-run] 已关闭无头 Chrome

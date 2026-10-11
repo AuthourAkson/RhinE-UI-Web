@@ -125,6 +125,13 @@ styleEl.textContent = [
 ].join("");
 document.head.appendChild(styleEl);
 
+// ⚠️ 面板背景必须自己铺：这块区域在原版是 **Columns UI 的原生 Playlist View**，它自带不透明背景，
+//    会盖住主题根面板（frame.js）画在下面的"区域底板"；网页版这里是 DOM 面板，
+//    不铺底色就会露出底板 —— 实测表现为曲目表右侧（ARTIST / TIME / POS 那几列下方）
+//    出现一大块浅灰，原版没有（用户实测）。铺上主题的窗口底色后与原版一致。
+document.documentElement.style.background = css(C.bg);
+document.body.style.background = css(C.bg);
+
 // ---------------------------------------------------------------------------------------------- 行模型
 let layout = [];
 let rows = [];                 // [{group:true,text,right} | {i}]

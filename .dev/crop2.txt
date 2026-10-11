@@ -1,0 +1,6 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/panel-crop.mjs
+播放列表面板（页面CSS）: {"x":288,"y":195,"w":1043,"h":608}
+已存 .dev/playlist-crop.png（面板上半部分 2 倍）
+
+各行背景: [{"cls":"prow group","bg":"rgba(0, 0, 0, 0)","top":"168px","h":"24px"},{"cls":"prow","bg":"rgba(0, 0, 0, 0)","top":"192px","h":"24px"},{"cls":"prow group","bg":"rgba(0, 0, 0, 0)","top":"0px","h":"24px"},{"cls":"prow","bg":"rgba(0, 0, 0, 0)","top":"24px","h":"24px"},{"cls":"prow","bg":"rgba(0, 0, 0, 0)","top":"48px","h":"24px"},{"cls":"prow","bg":"rgba(0, 0, 0, 0)","top":"72px","h":"24px"},{"cls":"prow","bg":"rgba(0, 0, 0, 0)","top":"96px","h":"24px"},{"cls":"prow","bg":"rgba(0, 0, 0, 0)","top":"120px","h":"24px"},{"cls":"prow","bg":"rgba(0, 0, 0, 0)","top":"144px","h":"24px"}]
+[chrome-run] 已关闭无头 Chrome

@@ -1,0 +1,29 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/light-area.mjs
+布局: album  行数: 9
+
+=== 面板 DOM 结构与尺寸 ===
+BODY.  0,0 1043x608  bg=rgba(0, 0, 0, 0) display=block z=auto
+  CANVAS.  0,0 1043x608  bg=rgba(0, 0, 0, 0) display=block z=auto
+  DIV.  0,0 1043x608  bg=rgba(0, 0, 0, 0) display=block z=auto
+      DIV.prow group  0,168 1043x25  bg=rgba(0, 0, 0, 0) display=block z=auto
+      DIV.prow  0,192 1043x24  bg=rgba(0, 0, 0, 0) display=block z=auto
+      DIV.prow group  0,0 1043x25  bg=rgba(0, 0, 0, 0) display=block z=auto
+      DIV.prow  0,24 1043x24  bg=rgba(0, 0, 0, 0) display=block z=auto
+      DIV.prow  0,48 1043x24  bg=rgba(0, 0, 0, 0) display=block z=auto
+      DIV.prow  0,72 1043x24  bg=rgba(0, 0, 0, 0) display=block z=auto
+      DIV.prow  0,96 1043x24  bg=rgba(0, 0, 0, 0) display=block z=auto
+      DIV.prow  0,120 1043x24  bg=rgba(0, 0, 0, 0) display=block z=auto
+      DIV.prow  0,144 1043x24  bg=rgba(0, 0, 0, 0) display=block z=auto
+
+=== 坐标取样（面板内坐标 → 该处元素）===
+y=120  120:SPAN.-/rgba(0, 0, 0, 0)  300:SPAN.-/rgba(0, 0, 0, 0)  520:SPAN.-/rgba(0, 0, 0, 0)  700:DIV.prow/rgba(0, 0, 0, 0)  900:DIV.prow/rgba(0, 0, 0, 0)  1000:SPAN.-/rgba(0, 0, 0, 0)
+y=200  120:SPAN.-/rgba(0, 0, 0, 0)  300:SPAN.-/rgba(0, 0, 0, 0)  520:SPAN.-/rgba(0, 0, 0, 0)  700:DIV.prow/rgba(0, 0, 0, 0)  900:DIV.prow/rgba(0, 0, 0, 0)  1000:SPAN.-/rgba(0, 0, 0, 0)
+y=260  120:DIV.-/rgba(0, 0, 0, 0)  300:DIV.-/rgba(0, 0, 0, 0)  520:DIV.-/rgba(0, 0, 0, 0)  700:DIV.-/rgba(0, 0, 0, 0)  900:DIV.-/rgba(0, 0, 0, 0)  1000:DIV.-/rgba(0, 0, 0, 0)
+y=320  120:DIV.-/rgba(0, 0, 0, 0)  300:DIV.-/rgba(0, 0, 0, 0)  520:DIV.-/rgba(0, 0, 0, 0)  700:DIV.-/rgba(0, 0, 0, 0)  900:DIV.-/rgba(0, 0, 0, 0)  1000:DIV.-/rgba(0, 0, 0, 0)
+y=380  120:DIV.-/rgba(0, 0, 0, 0)  300:DIV.-/rgba(0, 0, 0, 0)  520:DIV.-/rgba(0, 0, 0, 0)  700:DIV.-/rgba(0, 0, 0, 0)  900:DIV.-/rgba(0, 0, 0, 0)  1000:DIV.-/rgba(0, 0, 0, 0)
+y=440  120:DIV.-/rgba(0, 0, 0, 0)  300:DIV.-/rgba(0, 0, 0, 0)  520:DIV.-/rgba(0, 0, 0, 0)  700:DIV.-/rgba(0, 0, 0, 0)  900:DIV.-/rgba(0, 0, 0, 0)  1000:DIV.-/rgba(0, 0, 0, 0)
+y=500  120:DIV.-/rgba(0, 0, 0, 0)  300:DIV.-/rgba(0, 0, 0, 0)  520:DIV.-/rgba(0, 0, 0, 0)  700:DIV.-/rgba(0, 0, 0, 0)  900:DIV.-/rgba(0, 0, 0, 0)  1000:DIV.-/rgba(0, 0, 0, 0)
+面板尺寸 1043x608
+
+已存 .dev/playlist-light.png
+[chrome-run] 已关闭无头 Chrome
