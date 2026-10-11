@@ -1,0 +1,15 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/light-check.mjs
+=== 切换前（深色）各面板 html / body 背景 ===
+{"header":"rgba(0, 0, 0, 0) / rgba(0, 0, 0, 0)","transport":"rgba(0, 0, 0, 0) / rgba(0, 0, 0, 0)","stage":"rgba(0, 0, 0, 0) / rgba(0, 0, 0, 0)","manager":"rgba(0, 0, 0, 0) / rgba(0, 0, 0, 0)","head":"rgba(0, 0, 0, 0) / rgba(0, 0, 0, 0)","playlist":"rgb(11, 11, 11) / rgb(11, 11, 11)","card":"rgba(0, 0, 0, 0) / rgba(0, 0, 0, 0)","tip":"rgba(0, 0, 0, 0) / rgba(0, 0, 0, 0)","fx":"rgba(0, 0, 0, 0) / rgba(0, 0, 0, 0)","root":"rgba(0, 0, 0, 0) / rgba(0, 0, 0, 0)"}
+
+=== 切到浅色 ===
+面板 tokens MODE: light  C.bg: 4293848551  C.fg: 4280625185
+播放列表面板内: {"C_bg":4293848551,"html":"rgb(238, 237, 231)","body":"rgb(238, 237, 231)"}
+
+=== 切换后各面板 html / body 背景 ===
+{"header":"rgba(0, 0, 0, 0) / rgba(0, 0, 0, 0)","transport":"rgba(0, 0, 0, 0) / rgba(0, 0, 0, 0)","stage":"rgba(0, 0, 0, 0) / rgba(0, 0, 0, 0)","manager":"rgba(0, 0, 0, 0) / rgba(0, 0, 0, 0)","head":"rgba(0, 0, 0, 0) / rgba(0, 0, 0, 0)","playlist":"rgb(238, 237, 231) / rgb(238, 237, 231)","card":"rgba(0, 0, 0, 0) / rgba(0, 0, 0, 0)","tip":"rgba(0, 0, 0, 0) / rgba(0, 0, 0, 0)","fx":"rgba(0, 0, 0, 0) / rgba(0, 0, 0, 0)","root":"rgba(0, 0, 0, 0) / rgba(0, 0, 0, 0)"}
+
+=== 页面像素采样（浅色模式下，亮度高的才正常）===
+{}
+已存 .dev/light-playlists.png
+[chrome-run] 已关闭无头 Chrome

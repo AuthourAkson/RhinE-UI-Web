@@ -1,0 +1,8 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/regress-views.mjs
+视图 archive    {"errors":[],"panels":{"header":"1707x73 png=69022","transport":"1707x96 png=48954","stage":"1707x730 png=1646810","manager":"hidden","head":"hidden","playlist":"hidden","card":"hidden","tip":"hidden","fx":"hidden","root":"1707x899 png=96866"}}
+视图 playlists  {"errors":[],"panels":{"header":"1707x73 png=69674","transport":"1707x96 png=48718","stage":"hidden","manager":"288x730 png=33882","head":"1043x122 png=37762","playlist":"1043x608 png=41654","card":"376x730 png=173530","tip":"hidden","fx":"hidden","root":"1707x899 png=96866"}}
+视图 lyrics     {"errors":[],"panels":{"header":"1707x73 png=69402","transport":"1707x96 png=49006","stage":"1707x730 png=250054","manager":"hidden","head":"hidden","playlist":"hidden","card":"hidden","tip":"hidden","fx":"hidden","root":"1707x899 png=96866"}}
+视图 signal     {"errors":[],"panels":{"header":"1707x73 png=69270","transport":"1707x96 png=46502","stage":"1707x730 png=1049598","manager":"hidden","head":"hidden","playlist":"hidden","card":"hidden","tip":"hidden","fx":"hidden","root":"1707x899 png=96866"}}
+视图 style      {"errors":[],"panels":{"header":"1707x73 png=68922","transport":"1707x96 png=49298","stage":"1707x730 png=686406","manager":"hidden","head":"hidden","playlist":"hidden","card":"hidden","tip":"hidden","fx":"hidden","root":"1707x899 png=96866"}}
+PLAY ALBUM → {"playing":true,"item":{"playlist":0,"item":0},"title":"bombinsound"}
+[chrome-run] 已关闭无头 Chrome

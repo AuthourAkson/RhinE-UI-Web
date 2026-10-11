@@ -115,22 +115,42 @@ layer.style.cssText = "position:absolute;left:0;top:0;right:0";
 document.body.appendChild(scroll);
 scroll.tabIndex = 0;
 const styleEl = document.createElement("style");
-styleEl.textContent = [
-    ".prow{position:absolute;left:0;right:0;white-space:nowrap}",
-    ".prow span{position:absolute;top:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}",
-    ".prow.group span{letter-spacing:.14em;font-weight:600}",
-    `::-webkit-scrollbar{width:${SBW}px;height:${SBW}px}`,
-    "::-webkit-scrollbar-thumb{background:#55554f}",
-    "::-webkit-scrollbar-track{background:transparent}",
-].join("");
+/**
+ * 面板"外壳"（底色 + 滚动条）必须按**当前** tokens 生成，而且要在每次渲染时校准。
+ *
+ * ⚠️ 只在加载时设一次是不够的：切换浅色/深色时主题色 C 会变（本文件的
+ *    on_colours_changed → refreshTokens() 已经在上游做了这件事），但外壳若不再设一次，
+ *    就会一直停在上一种模式的颜色 —— 用户实测："切到 light 后播放列表下方还是黑的"。
+ * 滚动条滑块同理：以前写死 #55554f，浅色模式下也不对。
+ */
+function cssRules() {
+    return [
+        ".prow{position:absolute;left:0;right:0;white-space:nowrap}",
+        ".prow span{position:absolute;top:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}",
+        ".prow.group span{letter-spacing:.14em;font-weight:600}",
+        `::-webkit-scrollbar{width:${SBW}px;height:${SBW}px}`,
+        `::-webkit-scrollbar-thumb{background:${css(mix(C.fg, C.bg, .45))}}`,
+        "::-webkit-scrollbar-track{background:transparent}",
+    ].join("");
+}
+styleEl.textContent = cssRules();
 document.head.appendChild(styleEl);
 
-// ⚠️ 面板背景必须自己铺：这块区域在原版是 **Columns UI 的原生 Playlist View**，它自带不透明背景，
-//    会盖住主题根面板（frame.js）画在下面的"区域底板"；网页版这里是 DOM 面板，
-//    不铺底色就会露出底板 —— 实测表现为曲目表右侧（ARTIST / TIME / POS 那几列下方）
-//    出现一大块浅灰，原版没有（用户实测）。铺上主题的窗口底色后与原版一致。
-document.documentElement.style.background = css(C.bg);
-document.body.style.background = css(C.bg);
+// 面板背景必须自己铺：这块区域在原版是 **Columns UI 的原生 Playlist View**，它自带不透明背景，
+// 会盖住主题根面板（frame.js）画在下面的"区域底板"；网页版这里是 DOM 面板，
+// 不铺底色就会露出底板 —— 实测表现为曲目表右侧（ARTIST / TIME / POS 那几列下方）
+// 出现一大块浅灰，原版没有（用户实测）。铺上主题的窗口底色后与原版一致。
+let chromeKey = "";
+function paintChrome() {
+    const key = C.bg + "|" + C.fg + "|" + C.accent;
+    if (key === chromeKey) return;
+    chromeKey = key;
+    const bg = css(C.bg);
+    document.documentElement.style.background = bg;
+    document.body.style.background = bg;
+    styleEl.textContent = cssRules();
+}
+paintChrome();
 
 // ---------------------------------------------------------------------------------------------- 行模型
 let layout = [];
@@ -207,6 +227,7 @@ function styleRow(el, r) {
 }
 
 function render() {
+    paintChrome();                       // 底色/滚动条跟随当前 tokens（切浅色时也要变）
     layout = columnLayout(presetMeta());
     sizer.style.height = rows.length * ROW + "px";
     const first = Math.max(0, Math.floor(scroll.scrollTop / ROW) - 2);
