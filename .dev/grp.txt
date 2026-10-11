@@ -1,0 +1,10 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/groupname-test.mjs
+
+语言 zh-CN  分组名: 未知
+  该标签用的字体: {"字体":"700 13px \"Microsoft YaHei UI\", \"Microsoft YaHei UI\", sans-serif","weight":700,"track":0.14}
+  已存 .dev/groupname-zh.png
+
+语言 en  分组名: UNKNOWN
+  该标签用的字体: {"字体":"700 13px \"Geist Mono\", \"Microsoft YaHei UI\", sans-serif","weight":700,"track":0.14}
+  已存 .dev/groupname-en.png
+[chrome-run] 已关闭无头 Chrome

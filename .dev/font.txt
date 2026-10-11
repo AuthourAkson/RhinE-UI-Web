@@ -1,0 +1,18 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/font-test.mjs
+=== 字体构造（style 0 / 1）===
+{
+ "常规(style0)": "400 22px \"Geist Mono\", \"Microsoft YaHei UI\", sans-serif",
+ "粗体(style1)": "700 22px \"Geist Mono\", \"Microsoft YaHei UI\", sans-serif",
+ "CJK常规": "400 18px \"Microsoft YaHei UI\", \"Microsoft YaHei UI\", sans-serif",
+ "CJK粗体": "700 18px \"Microsoft YaHei UI\", \"Microsoft YaHei UI\", sans-serif"
+}
+
+字体是否真的可用（真粗体 vs 合成）:
+{"Geist Mono 400":true,"Geist Mono 700":true,"YaHei 400":true,"YaHei 700":true,"已注册的 FontFace 数":5}
+
+=== 标签位图（分辨率应 = 逻辑尺寸 × dpr 1.5）===
+{"逻辑":"54x13","后备":"81x20","dpr":1.5,"字体":"400 10px \"Geist Mono SemiBold\", \"Microsoft YaHei UI\", sans-serif"}
+已存 .dev/text-header-nav.png
+已存 .dev/text-archive-toolbar.png
+已存 .dev/text-shelf-group.png
+[chrome-run] 已关闭无头 Chrome

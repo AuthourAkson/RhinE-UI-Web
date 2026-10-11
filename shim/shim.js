@@ -309,9 +309,20 @@
     Font(family, sizePx, style) {
       const fam = family || 'Geist Mono';
       const size = Math.max(1, sizePx || 10);
+      // ⚠️⚠️ style 的**第 0 位是"粗体"**，不是斜体 —— 主题自己的用法是权威依据：
+      //   lib/tokens.js:74  d2d.Font(family, size, weight >= 700 || (cjk && weight >= 600) ? 1 : 0)
+      //   archive.js:577    a = Font("Geist Mono SemiBold", 15, 0)   b = Font("Geist Mono", 22, 1)
+      //                     ↑ 同一处的"常规 / 粗体"两兄弟：粗体只能来自第 0 位
+      //   archive.js:599    topC = Font("Microsoft YaHei UI", 18, 1)  ← CJK 只有单一字族，
+      //                     粗体同样只能靠这个标志
+      // 之前我把第 0 位当成斜体 → 所有本该**粗体**的标签被渲染成又细又斜的伪斜体：
+      // 看着发虚（粗体丢了），中文还会被浏览器做伪斜体（用户实测的"模糊"与"中文变斜体"同源）。
+      // 现在第 0 位 → font-weight:700（"Geist Mono" 家族里同时注册了 Regular 400 与 Bold 700，
+      // 所以取到的是**真正的粗体 TTF**，不是合成加粗）；第 1 位 → italic（主题没用过）。
+      const weight = (style & 1) ? 700 : 400;
       const f = {
         Family: fam, Size: size, Style: style | 0,
-        Css: `${style & 1 ? 'italic ' : ''}${style & 2 ? '700 ' : '400 '}${size}px "${fam}", "Microsoft YaHei UI", sans-serif`,
+        Css: `${(style & 2) ? 'italic ' : ''}${weight} ${size}px "${fam}", "Microsoft YaHei UI", sans-serif`,
       };
       const m = measure(); m.save(); m.font = f.Css;
       const tm = m.measureText('Mg');
