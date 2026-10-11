@@ -358,9 +358,24 @@ async function main() {
 
   log('已启动 —— frame.js 正在计算布局');
 
-  // 5) 曲库：?demo=1 走开发服务器的 HTTP 曲库（自测用）；否则等用户点「+ ADD MUSIC FOLDER」
+  // 5) 曲库：?demo=1 走开发服务器的 HTTP 曲库（自测用）；否则让用户自己选目录
   if (new URLSearchParams(location.search).has('demo')) {
     setTimeout(() => loadHttpLibrary().catch((e) => log(ht('Loading the demo library failed: {0}', e.message))), 1200);
+  } else {
+    // ⚠️ 没有任何曲库时也必须"完成一次空索引"：主题的 LIB.live 只在收到 catalog 消息时才置真
+    //    （lib/library.js:69），否则档案页永远停在 "INDEXING LIBRARY …"，
+    //    连它自带的「+ ADD MUSIC FOLDER」入口（archive.js:762，条件是 LIB.live && !LIB.filter）
+    //    都不会出现 —— 部署到公网后全新访客看到的就是一个永远转圈的页面（实测）。
+    //    空索引之后主题会显示 "NO ALBUMS · …" + 添加音乐文件夹按钮，点它就走 Library/Configure
+    //    → shim 映射到宿主的 add-music → 目录选择器，链路是通的。
+    setTimeout(() => {
+      libraryLoaded(0);
+      // LIB.live 只在收到 catalog 时置真，空曲库时这条不会自己发生：显式喂一条 0 曲目的 catalog
+      for (const p of PANELS) {
+        const w = p.__frame && p.__frame.contentWindow;
+        try { if (w && w.__rhine && w.__rhine.emptyCatalog) w.__rhine.emptyCatalog(); } catch (e) { }
+      }
+    }, 1500);
   }
 }
 

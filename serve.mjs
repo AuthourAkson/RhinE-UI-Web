@@ -122,16 +122,22 @@ function buildScriptOrders(text) {
 }
 
 /* ---------------------------------------------------------------------------- 清单 -- */
-function buildManifest() {
+// ⚠️ 这份清单逻辑被 build-static.mjs 复用（静态部署要生成同一份清单），所以导出；
+//    改这里等于同时改本地服务和线上构建，避免两处漂移。
+export function buildManifest({ exclude = [], root } = {}) {
   const text = {}, images = {}, files = [];
   // 这些目录不属于"主题资源"，扫进来只会让清单变大变慢：.git（本仓库自己的对象库）、
   // node_modules、以及开发用 Chrome 配置（含缓存，几万个文件）
   const SKIP = new Set(['.git', 'node_modules', 'chrome-profile', '.dev/chrome-profile']);
+  // 静态部署额外排除：.dev（开发探针 + 我自己留下的 .dev/manifest.json 有 3.1 MB）、
+  // image（开发截图）、musiclab（版权音频，另外也太大）、以及本地用的启动/服务脚本。
+  for (const e of exclude) SKIP.add(String(e).replace(/\/+$/, ''));
   let bytes = 0;
   const walk = (dir, relDir = '') => {
     for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
       const rel = relDir ? relDir + '/' + ent.name : ent.name;
       if (ent.isDirectory()) { if (!SKIP.has(rel) && !SKIP.has(ent.name)) walk(path.join(dir, ent.name), rel); continue; }
+      if (SKIP.has(rel) || SKIP.has(ent.name)) continue;
       const full = path.join(dir, ent.name);
       const ext = path.extname(ent.name).toLowerCase();
       const size = fs.statSync(full).size;
@@ -151,9 +157,15 @@ function buildManifest() {
   walk(ROOT);
   // root 给面板用：主题按 fb2k 的完整路径（D:\…\musiclab\a.lrc）找 sidecar 文件，
   // 而清单的键是相对仓库根的（musiclab/a.lrc），面板靠 root 把前缀剥掉才能命中。
-  return { text, images, files, bytes, root: ROOT.replace(/\\/g, '/') + '/', scripts: buildScriptOrders(text), built: new Date().toISOString() };
+  // 线上（静态站）传 root: ''，因为那边没有绝对路径，norm() 里的 ^\/+ 已经够用。
+  return {
+    text, images, files, bytes,
+    root: root !== undefined ? root : ROOT.replace(/\\/g, '/') + '/',
+    scripts: buildScriptOrders(text), built: new Date().toISOString(),
+  };
 }
 
+export { ROOT as PROJECT_ROOT } ;
 let cache = null;
 const manifest = () => (cache ??= buildManifest());
 
@@ -244,7 +256,10 @@ const server = http.createServer((req, res) => {
   fs.createReadStream(file).pipe(res);
 });
 
-server.listen(PORT, () => {
+// ⚠️ 只有**直接运行**时才监听端口：build-static.mjs 会 import 这个模块复用 buildManifest()，
+//    若在 import 时也 listen，构建脚本就会莫名其妙占着 8300 端口。
+const IS_MAIN = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (IS_MAIN) server.listen(PORT, () => {
   const m = manifest();
   console.log(`RhinE-UI  →  http://127.0.0.1:${PORT}/`);
   console.log(`  根目录 ${ROOT}`);

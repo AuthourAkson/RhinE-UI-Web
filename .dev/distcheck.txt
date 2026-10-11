@@ -1,0 +1,19 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/dist-check.mjs
+=== dist 静态托管验收 ===
+面板状态: {"header":"未就绪","transport":"未就绪","stage":"未就绪","manager":"未就绪","head":"未就绪","playlist":"未就绪","card":"未就绪","tip":"未就绪","fx":"未就绪","root":"未就绪"}
+错误数: 0 []
+请求数: 388  传输: 24.85 MB
+__manifest.json: 1 次 1690 KB
+最大 6 个请求:
+   1690 KB  /__manifest.json
+    322 KB  /themes/audio-archive/assets/render/case/white/hero-frost.png
+    269 KB  /themes/audio-archive/assets/render/case/white/hero-clear.png
+    147 KB  /themes/audio-archive/assets/fonts/GeistMono-Bold.ttf
+    147 KB  /themes/audio-archive/assets/fonts/GeistMono-Bold.ttf
+    147 KB  /themes/audio-archive/assets/fonts/GeistMono-Bold.ttf
+
+清单里的 .dev 条目: text 89 个，.dev 0 个；files 925 个；root=""
+
+已存 dist-archive/playlists/lyrics/signal/style.png
+最终错误数: 0 []
+[chrome-run] 已关闭无头 Chrome

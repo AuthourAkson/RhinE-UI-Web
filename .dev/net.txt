@@ -1,0 +1,28 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/net-measure.mjs
+=== 一次访问（?demo=1，无缓存）===
+总请求数: 389  总传输: 31249 KB = 30.52 MB
+
+按类型:
+  Image       13.25 MB
+  Font        7.83 MB
+  Fetch       7.31 MB
+  Script      2.11 MB
+  Document    0.01 MB
+  Other       0.00 MB
+
+__manifest.json: 1 次，共 7.31 MB （单次 7.31 MB）
+
+传输量前 12 名:
+    7485 KB  Fetch     /__manifest.json
+     322 KB  Image     /themes/audio-archive/assets/render/case/white/hero-frost.png
+     269 KB  Image     /themes/audio-archive/assets/render/case/white/hero-clear.png
+     147 KB  Font      /themes/audio-archive/assets/fonts/GeistMono-Bold.ttf
+     147 KB  Font      /themes/audio-archive/assets/fonts/GeistMono-Bold.ttf
+     147 KB  Font      /themes/audio-archive/assets/fonts/GeistMono-Bold.ttf
+     147 KB  Font      /themes/audio-archive/assets/fonts/GeistMono-Bold.ttf
+     147 KB  Font      /themes/audio-archive/assets/fonts/GeistMono-Bold.ttf
+     147 KB  Font      /themes/audio-archive/assets/fonts/GeistMono-Bold.ttf
+     147 KB  Font      /themes/audio-archive/assets/fonts/GeistMono-Bold.ttf
+     147 KB  Font      /themes/audio-archive/assets/fonts/GeistMono-Bold.ttf
+     147 KB  Font      /themes/audio-archive/assets/fonts/GeistMono-Bold.ttf
+[chrome-run] 已关闭无头 Chrome

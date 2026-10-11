@@ -1631,6 +1631,26 @@
       for (const w of workingWorkers) { try { if (w.__flush && w.__flush()) flushed = true; } catch (e) { } }
       return flushed;
     },
+    /**
+     * 宿主**没有任何曲库**时也要把"媒体库已就绪"告诉主题。
+     * 为什么必须做：主题的 LIB.live 只在 worker 送来 catalog 消息时才置真（lib/library.js:69），
+     * 而空曲库时那条路径不会自己发生 —— 于是档案页永远停在 "INDEXING LIBRARY …"，
+     * 连主题自带的「+ ADD MUSIC FOLDER」入口（archive.js:762，条件是 LIB.live && !LIB.filter）
+     * 都不出现。部署到公网后，全新访客看到的就是一个永远转圈的页面。
+     * 这里直接按主题自己的消息格式喂一条 0 曲目的 catalog（gen 必须与主题当前的 LIB.gen 一致，
+     * 否则 libMessage 第一行就 return）。
+     */
+    emptyCatalog() {
+      try {
+        if (typeof LIB === 'undefined' || !LIB || LIB.live) return false;
+        const m = {
+          gen: LIB.gen, type: 'catalog', tracks: 0, albums: [], items: [],
+          ms: { index: 0, cache: 0 }, written: 0,
+        };
+        if (typeof libMessage === 'function') { libMessage(m); return true; }
+      } catch (e) { console.error('emptyCatalog', e); }
+      return false;
+    },
     /** 宿主推送播放状态后，让主题重绘并触发对应的播放事件 */
     transport(evt, arg) {
       if (evt) { const h = HANDLERS[evt]; if (h) { try { h(arg); } catch (e) { console.error('[' + evt + ']', e); } } }

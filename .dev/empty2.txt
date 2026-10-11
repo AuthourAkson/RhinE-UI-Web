@@ -1,0 +1,7 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/empty-lib-check.mjs
+宿主曲库状态: {"ready":true,"files":0,"tracks":0}
+主题侧: {"live":true,"albums":0,"tracks":-1}
+是否给出「+ ADD MUSIC FOLDER」入口: {"id":"ar-addmusic","x":532,"y":391,"w":140,"h":40}
+当前空态文案区域: 已显示 NO ALBUMS 空态
+已存 .dev/dist-empty.png
+[chrome-run] 已关闭无头 Chrome
