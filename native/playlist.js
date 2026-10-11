@@ -135,6 +135,11 @@ function tracksOf() { return (window.__RHINE_LIBRARY__ || {}).tracks || []; }
 function trackAt(handle) { const t = tracksOf(); return handle && handle.__id != null ? t[handle.__id] : null; }
 
 function buildRows() {
+    // ⚠️ 先同步 PL 再建行：事件回调（on_playlists_changed / on_playlist_switch）里
+    //    buildRows() 排在 schedule() 之前，而更新 PL 的 syncState() 是 schedule() 里才跑的 ——
+    //    于是切换播放列表（例如搜索新建 "Search"）后的第一帧会按**旧列表**建行：
+    //    实测 rows=7 而新列表只有 1 首，界面就留下 6 行 00:00 的空行。
+    syncState();
     rows = [];
     if (PL < 0) { groupRows = { items: null, n: 0 }; return; }
     const items = plItems(PL), meta = presetMeta();

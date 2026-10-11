@@ -1,0 +1,25 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/search-test.mjs
+=== 先看查询/排序的纯函数（不依赖界面）===
+EXC ReferenceError: searchQuery is not defined
+    at eval (eval at <anonymous> (:1:65), <anonymous>:2:14)
+    at eval (eval at <anonymous> (:1:65), <anonymous>:4:3)
+    at eval (<anonymous>)
+    at <anon
+
+=== 播放列表视图里执行搜索 ===
+搜索前列表: ["Default Playlist(7)"]
+调用 applySearch（模拟搜索框输入 world）: {"查询":"(%title% HAS world OR %artist% HAS world OR %album artist% HAS world OR %album% HAS world OR %genre% HAS world OR %date% HAS world)","之后的活动列表":1}
+搜索后列表: [{"名":"Default Playlist","数":7,"自动":false,"曲目":["bombinsound","ethereal-bells","horror-hit","military-radio-communication-222904","rock-cinematic","speech","world.execute (me) ;"]},{"名":"Search","数":1,"自动":true,"曲目":["world.execute (me) ;"]}]
+IsAutoPlaylist(新列表) = 1 → true
+播放列表面板显示: [" | 001 | world.execute (me) ; | Mili | Miracle Milk |  | 03:32"," | 002 |  |  |  |  | 00:00"," | 003 |  |  |  |  | 00:00"," | 004 |  |  |  |  | 00:00"," | 005 |  |  |  |  | 00:00"," | 006 |  |  |  |  | 00:00"," | 007 |  |  |  |  | 00:00"]
+
+=== 再搜 "bomb"（应替换而不是新增）===
+列表: ["Default Playlist(7)","Search(1)"]
+Search 里的曲目: ["bombinsound"]
+
+=== 搜一个不存在的词 ===
+列表: ["Default Playlist(7)","Search(1)"]
+界面提示: ["001bombinsoundmusiclab00:18","00200:00","00300:00","00400:00"]
+
+已存 .dev/search-world.png
+[chrome-run] 已关闭无头 Chrome

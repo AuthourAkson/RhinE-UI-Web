@@ -1,0 +1,19 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/search-debug.mjs
+搜索前: {"PL":0,"活动列表_宿主":"n/a","rows数":7,"rows非组":7,"pool数":7,"可见行":7,"行内容":["|001|bombinsound||musiclab||00:18","|002|ethereal-bells||musiclab||00:14","|003|horror-hit||musiclab||00:10","|004|military-radio-communication-222904||musiclab||00:38","|005|rock-cinematic||musiclab||00:06","|006|speech||musiclab||00:05","|007|world.execute (me) ;|Mili|Miracle Milk||03:32"]}
+
+搜 "world" →
+  宿主列表: ["Default Playlist(7)","Search(1)"]  活动: 1
+  面板: {"PL":1,"活动列表_宿主":"n/a","rows数":1,"rows非组":1,"pool数":7,"可见行":1,"行内容":["|001|world.execute (me) ;|Mili|Miracle Milk||03:32"]}
+
+搜 "bomb" →
+  宿主列表: ["Default Playlist(7)","Search(1)"]  活动: 1
+  面板: {"PL":1,"活动列表_宿主":"n/a","rows数":1,"rows非组":1,"pool数":7,"可见行":1,"行内容":["|001|bombinsound||musiclab||00:18"]}
+
+搜 "zzzznotfound" →
+  宿主列表: ["Default Playlist(7)","Search(0)"]  活动: 1
+  面板: {"PL":1,"活动列表_宿主":"n/a","rows数":0,"rows非组":0,"pool数":7,"可见行":0,"行内容":[]}
+
+搜 "world" →
+  宿主列表: ["Default Playlist(7)","Search(1)"]  活动: 1
+  面板: {"PL":1,"活动列表_宿主":"n/a","rows数":1,"rows非组":1,"pool数":7,"可见行":1,"行内容":["|001|world.execute (me) ;|Mili|Miracle Milk||03:32"]}
+[chrome-run] 已关闭无头 Chrome

@@ -1,0 +1,8 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/archive-search.mjs
+搜索前: {"过滤词":"","专辑数":2,"可见项":2}
+搜 "world" → {"过滤词":"world","专辑数":2,"可见项":2}  播放列表: ["Default Playlist(7)"]
+搜 "mili" → {"过滤词":"mili","专辑数":2,"可见项":2}  播放列表: ["Default Playlist(7)"]
+搜 "zzzz" → {"过滤词":"zzzz","专辑数":2,"可见项":2}  播放列表: ["Default Playlist(7)"]
+搜 "(空)" → {"过滤词":"","专辑数":2,"可见项":2}  播放列表: ["Default Playlist(7)"]
+已存 .dev/archive-search.png
+[chrome-run] 已关闭无头 Chrome

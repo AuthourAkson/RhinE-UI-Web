@@ -699,6 +699,34 @@ window.__RHINE_CMD__ = (cmd) => {
     pushShared(); emit('on_playlist_items_changed'); emit('on_playlists_changed');
     return true;
   }
+  // 自动播放列表（主题的搜索：shim 按查询语句算好曲目索引后发过来）
+  if (cmd.startsWith('auto-playlist:')) {
+    // auto-playlist:<at>:<encodeURIComponent(name)>:<逗号分隔的曲目索引>
+    const rest = cmd.slice(14), s1 = rest.indexOf(':'), s2 = rest.indexOf(':', s1 + 1);
+    const at = Number(rest.slice(0, s1));
+    let name = 'Search';
+    try { name = decodeURIComponent(rest.slice(s1 + 1, s2)) || name; } catch (e) { }
+    // ⚠️ 必须 filter(Boolean)：搜不到东西时曲目段是空串，''.split(',') = ['']，
+    //    Number('') = 0 → 会把第 0 首当成结果插进去（实测：搜不存在的词反而显示 bombinsound）
+    const items = rest.slice(s2 + 1).split(',').filter(Boolean).map(Number).filter((n) => Number.isFinite(n) && n >= 0 && n < LIB.tracks.length);
+    const pos = Number.isFinite(at) && at >= 0 && at <= LIB.playlists.length ? at : LIB.playlists.length;
+    LIB.playlists.splice(pos, 0, { name, items, auto: true });   // auto: plman.IsAutoPlaylist 用
+    pushShared(); emit('on_playlists_changed');
+    log(`自动播放列表「${name}」：${items.length} 首`);
+    return pos;
+  }
+  if (cmd.startsWith('delete-playlist:')) {
+    const i = Number(cmd.slice(16));
+    if (!LIB.playlists[i]) return false;
+    LIB.playlists.splice(i, 1);
+    // 下标修正：活动列表 / 正在播放的列表 / 焦点列表都在被删项之后时要往前挪
+    if (LIB.activePlaylist > i) LIB.activePlaylist--;
+    if (LIB.playing && LIB.playing.playlist > i) LIB.playing.playlist--;
+    if (LIB.focusPlaylist > i) LIB.focusPlaylist--;
+    pushShared(); emit('on_playlists_changed');
+    log(`播放列表已删除（原下标 ${i}）`);
+    return true;
+  }
   console.log('宿主命令（暂未实现）:', cmd);
 };
 

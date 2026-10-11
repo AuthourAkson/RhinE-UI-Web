@@ -485,9 +485,58 @@
     };
   }
 
+  /* ---------------------------------------------------- 自动播放列表的查询 --
+   * 主题的搜索会生成这种查询（header.js:295-299）：
+   *   "world" → ( %title% HAS world OR %artist% HAS world OR %album artist% HAS world
+   *               OR %album% HAS world OR %genre% HAS world OR %date% HAS world )
+   * 多个词之间用 AND 连接。这里实现这个子集：每个 AND 项是一组括号里的 OR，
+   * 每项形如 `%字段% HAS 词`（HAS 即"包含"，不区分大小写）。
+   */
+  function queryMatch(t, query) {
+    const q = String(query == null ? '' : query).trim();
+    if (!q) return true;
+    const fields = fieldsOf(t);
+    const terms = q.split(/\s+AND\s+/i).map((s) => s.trim()).filter(Boolean);
+    return terms.every((term) => {
+      let t2 = term.trim();
+      while (t2.startsWith('(') && t2.endsWith(')')) t2 = t2.slice(1, -1).trim();   // 去一层括号
+      return t2.split(/\s+OR\s+/i).some((part) => {
+        const m = /^(%[^%]+%|[A-Za-z_ ]+?)\s+(HAS|IS|CONTAINS)\s+(.+)$/i.exec(part.trim());
+        if (!m) return false;
+        const key = m[1].replace(/%/g, '').trim().toLowerCase();
+        const val = fields[key];
+        if (val == null) return false;
+        const needle = m[3].trim().replace(/^["']|["']$/g, '');
+        return String(val).toLowerCase().includes(needle.toLowerCase());
+      });
+    });
+  }
+
+  /** 按排序格式（`%album artist% | %date% | %album% | %discnumber% | %tracknumber%`）给出匹配的曲目索引 */
+  function autoQueryItems(query, sort) {
+    const tracks = libTracks();
+    const hits = [];
+    for (let i = 0; i < tracks.length; i++) if (queryMatch(tracks[i], query)) hits.push(i);
+    const parts = String(sort == null ? '' : sort).split('|')
+      .map((s) => s.trim().replace(/%/g, '').trim().toLowerCase()).filter(Boolean);
+    if (parts.length && hits.length) {
+      const keyOf = (i) => { const f = fieldsOf(tracks[i]); return parts.map((p) => String(f[p] == null ? '' : f[p])); };
+      hits.sort((a, b) => {
+        const ka = keyOf(a), kb = keyOf(b);
+        for (let k = 0; k < ka.length; k++) {
+          if (ka[k] === kb[k]) continue;
+          const na = parseFloat(ka[k]), nb = parseFloat(kb[k]);
+          if (Number.isFinite(na) && Number.isFinite(nb) && na !== nb) return na - nb;   // 音轨/碟号按数值
+          return ka[k].localeCompare(kb[k]);
+        }
+        return a - b;
+      });
+    }
+    return hits;
+  }
+
   /** 把曲目摊平成 foobar2000 的字段名（TitleFormat 用） */
-  function fieldsOf(t) {
-    if (!t) return {};
+  function fieldsOf(t) {    if (!t) return {};
     const m = Math.floor((t.length || 0) / 60), s = Math.round((t.length || 0) % 60);
     return {
       title: t.title || '', artist: t.artist || '', 'album artist': t.albumArtist || t.artist || '',
@@ -665,7 +714,20 @@
       const idx = HOST.command(`create-playlist:${at == null ? -1 : at}:${String(name == null ? '' : name)}`);
       return typeof idx === 'number' ? idx : -1;
     },
-    CreateAutoPlaylist: () => -1,
+    // ---- 自动播放列表（自动播放列表 = 由一条 foobar2000 查询语句从曲库算出来的列表）----
+    // 主题的搜索就是它：header.js:319 `plman.CreateAutoPlaylist(idx, "Search", q, sort, 0)`，
+    // 其中 q = "( %title% HAS world OR %artist% HAS world OR … )"。之前这里是 stub → 返回 -1 →
+    // "Search" 列表建不出来 → 搜索后界面显示"No playlist"、什么都搜不到（用户实测）。
+    // 这里实现的是**查询语言的一个最小子集**：`(字段 HAS 词 OR …) [AND (…)]`，
+    // 足够覆盖主题生成的全部查询；排序格式按 `|` 分段逐字段比较。
+    CreateAutoPlaylist: (idx, name, query, sort) => {
+      const at = idx == null || idx < 0 ? -1 : idx;
+      const items = autoQueryItems(query, sort);
+      const pos = HOST.command(`auto-playlist:${at}:${encodeURIComponent(String(name == null ? '' : name))}:${items.join(',')}`);
+      return typeof pos === 'number' ? pos : -1;
+    },
+    RemovePlaylist: (i) => { HOST.command(`delete-playlist:${Number(i) || 0}`); },
+    IsAutoPlaylist: (i) => !!(libPlaylists()[i] || {}).auto,
     GetPlayingItemLocation: () => {
       const L = LIB_ROOT();
       const item = L && L.playing ? L.playing.item : -1;
@@ -700,8 +762,17 @@
     EnsurePlaylistItemVisible: (p, i) => { HOST.command(`pl-ensure:${p}:${i}`); },
     // 移除当前选择集（网页版原生列表的右键菜单用；行为同 Columns UI：移除被选中的项）
     RemovePlaylistSelection: (p) => { HOST.command(`pl-remove:${p}`); },
+    // `InsertPlaylistItemsFilter(pl, at, list)`：主题的整库随机（bus.js:76）不带过滤条件调用它，
+    // 语义等同于把整份列表插进去，所以直接按普通插入实现
+    InsertPlaylistItemsFilter: (p, at, list) => {
+      const ids = [];
+      for (let i = 0; i < ((list && list.Count) || 0); i++) { const h = list.Item(i); if (h && h.__id != null) ids.push(h.__id); }
+      HOST.command(`insert-playlist:${p}:${at || 0}:${ids.join(',')}`);
+    },
     ClearPlaylist: (p) => { HOST.command('clear-playlist:' + p); },
-    RemovePlaylist: () => { }, RemovePlaylistSwitch: () => { }, MovePlaylist: () => { },
+    // ⚠️ RemovePlaylist 的实现写在上面（自动播放列表那一段），这里不能再放一个空实现 ——
+    //    对象字面量里同名键后者覆盖前者，之前就是被这行空实现盖掉导致搜索的旧列表删不掉。
+    RemovePlaylistSwitch: () => { }, MovePlaylist: () => { },
     DuplicatePlaylist: () => -1, UndoBackup: () => { },
     // list 是 handleList（Proxy）：句柄由 makeTrackHandle(i) 生成，__id 即曲目索引
     InsertPlaylistItems: (p, at, list) => {
@@ -744,7 +815,7 @@
       if (found >= 0) return found;
       return create ? plman.CreatePlaylist(-1, name) : -1;
     },
-    ShowAutoPlaylistUI: () => false, IsAutoPlaylist: () => false,
+    ShowAutoPlaylistUI: () => false,
     IsPlaylistLocked: () => false,
     GetPlaylistItemsForPlayback: () => handleList(),
     AddLocations: () => { }, AddPlaylistItemToPlaybackQueue: () => { }, AddItemToPlaybackQueue: () => { },
