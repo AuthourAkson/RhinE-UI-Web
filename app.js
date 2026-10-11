@@ -114,6 +114,7 @@ const HOST_I18N = {
     'Re-scanning the library…': '重新扫描曲库…',
     'Mode switched → {0}': '模式切换 → {0}',
     'Colour scheme → {0} ({1})': '配色方案 → {0}（{1}）',
+    'Panel ready: {0} ({1} callbacks, {2} ms)': '面板就绪：{0}（{1} 个回调，{2} ms）',
     'Track {0} has no playable source': '第 {0} 首没有可播放来源',
     'Removed {0} playlist items': '播放列表移除 {0} 项',
     'Playlist renamed → {0}': '播放列表改名 → {0}',
@@ -256,11 +257,15 @@ function bootPanel(p, entry, extra = {}) {
     if (!m || m.__rhine !== 1 || m.id !== p.__id) return;
     if (m.type === 'ready') {
       p.__ready = true;
-      log(`面板就绪：${p.__id}（${m.data.handlers.length} 个回调，${m.data.ms} ms）`);
+      log(ht('Panel ready: {0} ({1} callbacks, {2} ms)', p.__id, m.data.handlers.length, m.data.ms));
       if (p.w) p.Move(p.x, p.y, p.w, p.h);
       // 补发它错过的共享状态（可能还不止一次：脚本就绪与回调收集之间有时间差）
       BUS.catchUp(p.__id);
       setTimeout(() => BUS.catchUp(p.__id), 400);
+      // ⚠️ 无曲库时，**每个面板就绪时**都补一次"空曲库已就绪"：主题的 LIB.live 只在收到 catalog
+      //    时置真，而面板就绪需要好几秒（线上实测 stage 用了 7.3 s）——
+      //    只靠启动时的定时器会早于 shim 出现，公告发不出去，档案页就一直停在"正在索引媒体库…"。
+      if (noLibrary()) announceEmptyLibrary(p);
     }
     if (m.type === 'booted') {
       console.log(`[${p.__id}] 入口已执行`, m.data);
@@ -368,15 +373,33 @@ async function main() {
     //    都不会出现 —— 部署到公网后全新访客看到的就是一个永远转圈的页面（实测）。
     //    空索引之后主题会显示 "NO ALBUMS · …" + 添加音乐文件夹按钮，点它就走 Library/Configure
     //    → shim 映射到宿主的 add-music → 目录选择器，链路是通的。
-    setTimeout(() => {
-      libraryLoaded(0);
-      // LIB.live 只在收到 catalog 时置真，空曲库时这条不会自己发生：显式喂一条 0 曲目的 catalog
-      for (const p of PANELS) {
-        const w = p.__frame && p.__frame.contentWindow;
-        try { if (w && w.__rhine && w.__rhine.emptyCatalog) w.__rhine.emptyCatalog(); } catch (e) { }
-      }
-    }, 1500);
+    //    ⚠️ 面板就绪要好几秒（线上实测 stage 7.3 s），单靠一个定时器会早于 shim 出现而白发 ——
+    //       所以：先置曲库就绪放行 worker，再按多个时间点补发，最后靠 ready 事件兜底（见 ready 分支）。
+    setTimeout(() => libraryLoaded(0), 1200);
+    for (const t of [1500, 3000, 6000, 10000]) {
+      setTimeout(() => { if (noLibrary()) announceEmptyLibrary(); }, t);
+    }
   }
+}
+
+/** 是否"完全没有曲库"（全新访客 / 还没选目录） */
+const noLibrary = () => !LIB.files.length && !location.search.includes('demo=1');
+
+/**
+ * 把"媒体库已就绪（0 曲目）"告诉主题。
+ * 为什么必须做：主题的 LIB.live 只在收到 catalog 消息时置真（lib/library.js:69），空曲库时这条
+ * 路径不会自己发生 —— 于是档案页永远停在 "INDEXING LIBRARY …"，连主题自带的
+ * 「+ ADD MUSIC FOLDER」入口（archive.js:762，条件是 LIB.live && !LIB.filter）都不出现。
+ * 部署到公网后，全新访客看到的就是一个永远转圈的页面。
+ * 传 panel 就只发给那一个面板（面板就绪时逐个补发）。
+ */
+function announceEmptyLibrary(panel) {
+  let any = false;
+  for (const p of (panel ? [panel] : PANELS)) {
+    const w = p.__frame && p.__frame.contentWindow;
+    try { if (w && w.__rhine && w.__rhine.emptyCatalog && w.__rhine.emptyCatalog()) any = true; } catch (e) { }
+  }
+  return any;
 }
 
 // shim 里 HOST.command（fb.RunMainMenuCommand / 主题菜单动作）的落地实现

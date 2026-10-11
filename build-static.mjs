@@ -32,6 +32,7 @@ const KEEP = argv.reduce((acc, a, i) => (a === '--keep' && argv[i + 1] ? acc.con
 const EXCLUDE = [
   '.dev', 'image', 'musiclab', 'node_modules',
   'serve.mjs', 'build-static.mjs', 'README.md', '.gitignore',
+  '启动 RhinE-UI.cmd', '停止 RhinE-UI.cmd',          // 本机启动器，线上没意义
   ...KEEP.map((k) => k),
 ];
 
@@ -110,12 +111,28 @@ const HEADERS = `# Cloudflare Pages / Netlify 通用缓存策略
   Cache-Control: public, max-age=31536000, immutable
 `;
 
-// SPA 兜底：真实文件优先，其余交给 index.html（面板入口 panel.html 存在，不受影响）
+// SPA 兜底：本站不需要（见上面说明）。保留变量方便将来别的站复用这套构建。
 const REDIRECTS = `/*    /index.html   200
 `;
+void REDIRECTS;
 
+// ⚠️ 故意**不写 `_redirects` 的 SPA 兜底**：本站没有客户端路由（视图切换全在 iframe 里），
+//    把未知路径都回 index.html 只会掩盖问题 —— 比如某个主题 JS 缺失时会返回 HTML，
+//    解析报错莫名其妙。配合 wrangler.toml 的 not_found_handling = "404-page"，
+//    缺文件就是干净的 404，扫描器打 /\.env 也完全不消耗额度。
 fs.writeFileSync(path.join(OUT, '_headers'), HEADERS);
-fs.writeFileSync(path.join(OUT, '_redirects'), REDIRECTS);
+// wrangler 的 .assetsignore（放在 assets 目录根部）：dist 已经是干净产物，这里只是防呆 ——
+// 万一将来有人在 dist 里放了本地验证产物（浏览器配置动辄几十 MB），不会被一起上传。
+fs.writeFileSync(path.join(OUT, '.assetsignore'), [
+  '# 本地验证产物 / 后端源码，永远不要上传',
+  '_verify/',
+  'worker/',
+  '.secrets/',
+  'node_modules/',
+  '*.log',
+  '*.map',
+  '',
+].join('\n'));
 
 const mfSize = Buffer.byteLength(manifestJson);
 const hash = crypto.createHash('sha256').update(manifestJson).digest('hex').slice(0, 12);

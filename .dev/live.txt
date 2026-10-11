@@ -1,0 +1,12 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/live-check.mjs
+打开线上站点…
+URL: https://rhine.auak.dpdns.org/
+标题: RhinE — An Audio Archive（网页版移植 · 里程碑 1）
+面板: ["header✗","transport✗","stage✗","manager✗","head✗","playlist✗","card✗","tip✗","fx✗","root✗","undefined✗"]
+状态行: 面板就绪：stage（29 个回调，7321.3 ms）
+错误数: 0 []
+请求数: 366  传输: 9.72 MB
+清单: 200 290 KB cache=public, max-age=0, must-revalidate cf=HIT
+字体: 200 cache=public, max-age=31536000, immutable, public, max-age=31536000, immutable cf=HIT
+已存 .dev/live-rhine.png
+[chrome-run] 已关闭无头 Chrome

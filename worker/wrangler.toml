@@ -1,0 +1,29 @@
+# RhinE-UI 的 Cloudflare Worker 配置（纯静态资源）
+#
+# 为什么是「只有 assets、没有 main」：
+#   官方文档（workers/static-assets/billing-and-limitations）明确写：
+#     "Requests to static assets are free and unlimited."
+#     "When using run_worker_first, requests matching the specified patterns will always
+#      invoke your Worker script. If you exceed your free tier request limits, these requests
+#      will receive a 429 instead of falling back to static asset serving."
+#   → 不配 main、不用 run_worker_first，就等于**每一个请求都走静态资源**：
+#     免费、不限量、也不消耗每日 10 万次的 Worker 请求额度。这正是「省 Cloudflare 额度」的最优解。
+#   → 也因为没有 Worker 脚本，扫描器打不存在的路径不会产生脚本调用（走 not_found_handling）。
+#
+# 静态文件来自 ../dist（由 node build-static.mjs 生成，含构建期清单、_headers、_redirects）。
+
+name = "rhine-ui"
+compatibility_date = "2026-10-11"
+
+[assets]
+directory = "../dist"
+# 404-page：不存在的路径返回静态 404，不调用 Worker 脚本 —— 扫描器刷 /\.env 之类路径零成本。
+# （对照：drawmusic 那套用 not_found_handling="none" + 边缘规则，是因为它有 /api/* 要做。
+#   本站在浏览器里完成全部逻辑，没有后端接口，所以用最省额度的这一档。）
+not_found_handling = "404-page"
+
+# 自定义域名：部署时自动创建域名绑定 + DNS 记录 + 证书（Universal SSL 覆盖一级子域）。
+# 想换名字改这一行即可，例如 rhine-ui.auak.dpdns.org。
+[[routes]]
+pattern = "rhine.auak.dpdns.org"
+custom_domain = true
