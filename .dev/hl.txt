@@ -1,0 +1,14 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/host-lang-test.mjs
+
+=== 语言 en ===
+  主题侧 UI_LANG: en  | HUD 按钮: Pick element / Hide
+  状态行: Opened the web preferences
+  首选项: PREFERENCES · Web preferences | In the original this is foobar2000’s native preferences | ✕ | Library / MEDIA LIBRARY | Source | Demo library (?demo=1) | Tracks / albums | 7 / 2 | Duration / size | 05:03 / 10.8 MB | Choose music folder… | Rescan | Load demo library | Note: folder-handle persistence (IndexedDB) is not implemented yet, so a rescan asks for the folder again. | Cache / CACHE | Waveform cache | Decoded wh
+
+=== 语言 zh-CN ===
+  主题侧 UI_LANG: zh-CN  | HUD 按钮: 拾取元素 / 隐藏
+  状态行: 打开网页版首选项
+  首选项: PREFERENCES · 网页版首选项 | 原版这里是 foobar2000 的原生设置 | ✕ | 曲库 / MEDIA LIBRARY | 来源 | 演示曲库（?demo=1） | 曲目 / 专辑 | 7 / 2 | 总时长 / 体积 | 05:03 / 10.8 MB | 选音乐文件夹… | 重新扫描 | 载入演示曲库 | 说明：本地文件夹的目录句柄持久化（IndexedDB）还没做，重扫需要重新选一次目录。 | 缓存与设置 / CACHE | 波形缓存 | 解码后的整轨波形存在各面板内存里（配合「清空」重算） | 清空波形 / 封面缓存 | 恢复默认设置… | 快捷键 / SHORTCUTS | 1 – 5 | 切换五个视图（档案 / 播放列表 / 歌词 / 信号 / 外观） | T | 浅色 / 深色 | P | 播放列表预设 Album ⇄ Index | B | 播放开场影片 | S | 整库随机播放 | R |
+
+已存 .dev/prefs-en.png / prefs-zh.png
+[chrome-run] 已关闭无头 Chrome

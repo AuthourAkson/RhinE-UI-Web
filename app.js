@@ -30,6 +30,115 @@ function log(msg) {
   console.log(msg);
 }
 
+/* ------------------------------------------------------- 宿主自己的界面文案 --
+ * 主题的界面语言存在设置文件里（uiLang，由菜单 › Audio Archive › Language 切换）。
+ * 宿主自己画的东西（网页版首选项、HUD 按钮、底部状态行）也必须跟随它，
+ * 否则切成英文后这些地方还是中文（用户实测："切换语言后里面还是中文"）。
+ * 约定与主题的 lib/i18n.js 完全一致：**英文原文即 key**，没有翻译就保持英文。
+ */
+const HOST_LANGS = ['en', 'zh-CN', 'ja'];
+function hostLang() {
+  let sys = String((navigator.languages && navigator.languages[0]) || navigator.language || 'en').toLowerCase();
+  sys = /^zh-(tw|hk|mo|hant)/.test(sys) ? 'zh-CN' : /^zh/.test(sys) ? 'zh-CN'
+    : (['ja', 'ko', 'de', 'fr'].includes(sys.split('-')[0]) ? sys.split('-')[0] : 'en');
+  try {
+    const raw = localStorage.getItem('rhine:file:audio-archive-settings.json');
+    const set = raw ? String(JSON.parse(raw).uiLang || '') : '';
+    if (HOST_LANGS.includes(set)) return set;
+  } catch (e) { }
+  return HOST_LANGS.includes(sys) ? sys : 'en';
+}
+const HOST_I18N = {
+  'zh-CN': {
+    // HUD（开发用小工具）
+    'Pick element': '拾取元素',
+    'Hide': '隐藏',
+    'Pick mode on: click anywhere (or hold Alt and click); the result is printed and copied to the clipboard': '拾取模式已开：点画面上任意位置（或按住 Alt 点击），结果会打印并复制到剪贴板',
+    'Pick mode off': '拾取模式已关',
+    // 网页版首选项
+    'PREFERENCES · Web preferences': 'PREFERENCES · 网页版首选项',
+    'In the original this is foobar2000’s native preferences': '原版这里是 foobar2000 的原生设置',
+    'Library / MEDIA LIBRARY': '曲库 / MEDIA LIBRARY',
+    'Source': '来源',
+    'Tracks / albums': '曲目 / 专辑',
+    'Duration / size': '总时长 / 体积',
+    'Choose music folder…': '选音乐文件夹…',
+    'Rescan': '重新扫描',
+    'Load demo library': '载入演示曲库',
+    'Demo library (?demo=1)': '演示曲库（?demo=1）',
+    'Local folder (File System Access)': '本地文件夹（File System Access）',
+    'Not loaded': '未载入',
+    'Note: folder-handle persistence (IndexedDB) is not implemented yet, so a rescan asks for the folder again.': '说明：本地文件夹的目录句柄持久化（IndexedDB）还没做，重扫需要重新选一次目录。',
+    'Cache / CACHE': '缓存与设置 / CACHE',
+    'Waveform cache': '波形缓存',
+    'Decoded whole-track waveforms live in each panel’s memory (clear to recompute)': '解码后的整轨波形存在各面板内存里（配合「清空」重算）',
+    'Clear waveform / cover cache': '清空波形 / 封面缓存',
+    'Reset all settings…': '恢复默认设置…',
+    'Clear all settings (colour scheme / view / skin / interface language…) and reload?': '清空全部设置（配色方案 / 视图 / 皮肤 / 界面语言…）并重新载入？',
+    'Shortcuts / SHORTCUTS': '快捷键 / SHORTCUTS',
+    'Switch between the five views (Archive / Playlists / Lyrics / Signal / Style)': '切换五个视图（档案 / 播放列表 / 歌词 / 信号 / 外观）',
+    'Light / dark': '浅色 / 深色',
+    'Playlist preset Album ⇄ Index': '播放列表预设 Album ⇄ Index',
+    'Play the intro film': '播放开场影片',
+    'Shuffle the whole library': '整库随机播放',
+    'Random pick in the Archive': '档案视图里随机抽取',
+    'Inspect the current album': '查看 / 检查当前专辑',
+    'Search (filters the Archive in place; other views create a Search playlist)': '搜索（档案视图里就地过滤，其它视图建 Search 列表）',
+    'Leave the search / close overlays': '退出搜索 / 关闭浮层',
+    'Play / pause': '播放 / 暂停',
+    'About / ABOUT': '关于 / ABOUT',
+    'Theme version': '主题版本',
+    'Port': '移植',
+    'Manifest built': '清单构建于',
+    'Panels': '面板',
+    'Viewport / scale': '视口 / 缩放',
+    'Browser': '浏览器',
+    'Rendering': '渲染',
+    'RhinE-UI · theme JS byte-identical to the original 1.4.0': 'RhinE-UI · 主题 JS 与原版 1.4.0 逐字节一致',
+    'Fonts loaded': '字体已加载',
+    'Fonts not loaded': '字体未加载',
+    'Opened the web preferences': '打开网页版首选项',
+    // 底部状态行里面向用户的那几条
+    'Music library ready: {0} files (source {1}) → asking the panels to re-index': '媒体库就绪：{0} 个文件（来源 {1}）→ 通知面板重新索引',
+    'Library indexed: {0} tracks / {1} albums ({2} ms)': '曲库解析完成：{0} 首 / {1} 张专辑（解析 {2} ms）',
+    'HTTP library: {0} files': 'HTTP 曲库：{0} 个文件',
+    'Loading the demo library failed: {0}': '加载演示曲库失败：{0}',
+    'Playing: {0}': '播放：{0}',
+    'Playback failed: {0} (the browser may not support this format)': '播放失败：{0}（浏览器可能不支持该格式）',
+    'Choosing a folder was cancelled': '已取消选择目录',
+    'Scanning the folder…': '正在扫描目录…',
+    'Scan finished: {0} audio files': '扫描完成：{0} 个音频文件',
+    'This browser has no File System Access API — use Chrome or Edge': '此浏览器不支持 File System Access API，请用 Chrome/Edge',
+    'Settings restored to defaults, reloading…': '设置已恢复默认，正在重新载入…',
+    'Cache cleared: {0} entries (waveforms are decoded again next time the Signal view opens)': '已清空缓存：{0} 条（波形会在下次进入 SIGNAL 视图时重新解码）',
+    'Re-scanning the library…': '重新扫描曲库…',
+    'Mode switched → {0}': '模式切换 → {0}',
+    'Colour scheme → {0} ({1})': '配色方案 → {0}（{1}）',
+    'Track {0} has no playable source': '第 {0} 首没有可播放来源',
+    'Removed {0} playlist items': '播放列表移除 {0} 项',
+    'Playlist renamed → {0}': '播放列表改名 → {0}',
+    'Auto playlist “{0}”: {1} tracks': '自动播放列表「{0}」：{1} 首',
+    'Playlist deleted (was index {0})': '播放列表已删除（原下标 {0}）',
+  },
+};
+/** ht('English text', ...args) —— 缺翻译就用英文原文（与主题 tr() 同一约定） */
+function ht(s, ...args) {
+  const t = HOST_I18N[hostLang()];
+  let out = (t && typeof t[s] === 'string') ? t[s] : s;
+  if (args.length) out = out.replace(/\{(\d+)\}/g, (m, i) => (args[i] === undefined ? m : String(args[i])));
+  return out;
+}
+/** HUD 的按钮文案（index.html 里是静态中文，这里按当前语言改写；开发用小工具） */
+function applyHostLang() {
+  const pick = $('#pick-btn'), hide = $('#hide-btn');
+  if (pick) {
+    pick.textContent = ht('Pick element');
+    pick.title = ht('Pick mode on: click anywhere (or hold Alt and click); the result is printed and copied to the clipboard');
+  }
+  if (hide) hide.textContent = ht('Hide');
+}
+
+
 /* ------------------------------------------------- 面板对象（PanelObject） -- */
 function makePanel(id, title, index) {
   const frame = document.createElement('iframe');
@@ -177,6 +286,7 @@ function bootPanel(p, entry, extra = {}) {
 }
 
 async function main() {
+  applyHostLang();                     // HUD 按钮文案跟随主题的界面语言
   log('读取清单…');
   manifest = await (await fetch('/__manifest.json')).json();
   log(`清单：${Object.keys(manifest.text).length} 个文本 / ${Object.keys(manifest.images).length} 张图尺寸`);
@@ -250,7 +360,7 @@ async function main() {
 
   // 5) 曲库：?demo=1 走开发服务器的 HTTP 曲库（自测用）；否则等用户点「+ ADD MUSIC FOLDER」
   if (new URLSearchParams(location.search).has('demo')) {
-    setTimeout(() => loadHttpLibrary().catch((e) => log('加载演示曲库失败：' + e.message)), 1200);
+    setTimeout(() => loadHttpLibrary().catch((e) => log(ht('Loading the demo library failed: {0}', e.message))), 1200);
   }
 }
 
@@ -408,7 +518,7 @@ function setPicking(on) {
   }
   const b = $('#pick-btn');
   if (b) b.classList.toggle('on', on);
-  log(on ? '拾取模式已开：点画面上任意位置（或按住 Alt 点击），结果会打印并复制到剪贴板' : '拾取模式已关');
+  log(on ? ht('Pick mode on: click anywhere (or hold Alt and click); the result is printed and copied to the clipboard') : ht('Pick mode off'));
 }
 
 /** 调试句柄：给 .dev/ 下的探针用（也方便你在控制台里手动试） */
@@ -418,7 +528,7 @@ window.__RHINE_DEBUG__ = { LIB, SHARED, audio, playIndex, nextTrack, loadHttpLib
 function libraryLoaded(fileCount) {
   LIB.ready = true;
   pushShared();
-  log(`媒体库就绪：${fileCount} 个文件（来源 ${LIB.source}）→ 通知面板重新索引`);
+  log(ht('Music library ready: {0} files (source {1}) → asking the panels to re-index', fileCount, LIB.source));
   for (const p of PANELS) {
     const w = p.__frame && p.__frame.contentWindow;
     if (!w || !w.__rhine) continue;
@@ -442,7 +552,7 @@ window.__RHINE_ON_CATALOG__ = (m) => {
   LIB.playing = { playlist: -1, item: -1 };
   LIB.albums = m.albums || [];
   pushShared();
-  log(`曲库解析完成：${m.tracks} 首 / ${LIB.albums.length} 张专辑（解析 ${Math.round(m.ms.index)} ms）`);
+  log(ht('Library indexed: {0} tracks / {1} albums ({2} ms)', m.tracks, LIB.albums.length, Math.round(m.ms.index)));
   // ⚠️ 这里**绝对不能**触发 on_library_items_changed / on_library_items_added：
   //    主题的 lib/library.js 把这两个回调接到 libChanged() → 1.5 秒后重新发 index 请求，
   //    于是变成 "catalog → 通知 → 重新索引 → catalog …" 的无限循环
@@ -457,15 +567,15 @@ window.__RHINE_ON_CATALOG__ = (m) => {
 async function loadHttpLibrary() {
   const list = await (await fetch('/__music.json')).json();
   LIB.files = list; LIB.source = 'http';
-  log(`HTTP 曲库：${list.length} 个文件`);
+  log(ht('HTTP library: {0} files', list.length));
   if (list.length) libraryLoaded(list.length); else log('（/.dev/music 里没有音频素材）');
 }
 
 async function loadFsLibrary() {
-  if (!window.showDirectoryPicker) { log('此浏览器不支持 File System Access API，请用 Chrome/Edge'); return; }
+  if (!window.showDirectoryPicker) { log(ht('This browser has no File System Access API — use Chrome or Edge')); return; }
   let dir;
   try { dir = await window.showDirectoryPicker({ id: 'rhine-music', mode: 'read' }); }
-  catch (e) { log('已取消选择目录'); return; }
+  catch (e) { log(ht('Choosing a folder was cancelled')); return; }
   const rootName = dir.name || 'Music';
   const files = [];
   const walk = async (handle, prefix) => {
@@ -475,10 +585,10 @@ async function loadFsLibrary() {
       else if (/\.(mp3|flac|m4a|ogg|oga|opus|wav|aac)$/i.test(name)) files.push({ path: 'D:\\' + rootName + p, file: await ent.getFile() });
     }
   };
-  log('正在扫描目录…');
+  log(ht('Scanning the folder…'));
   await walk(dir, '');
   LIB.files = files; LIB.source = 'fs';
-  log(`扫描完成：${files.length} 个音频文件`);
+  log(ht('Scan finished: {0} audio files', files.length));
   if (files.length) libraryLoaded(files.length);
 }
 
@@ -500,7 +610,7 @@ function emit(evt, arg) {
 
 function playIndex(i) {
   const src = trackSrc(i);
-  if (!src) { log(`第 ${i + 1} 首没有可播放来源`); return; }
+  if (!src) { log(ht('Track {0} has no playable source', i + 1)); return; }
   const pl = LIB.activePlaylist >= 0 ? LIB.activePlaylist : 0;
   const at = ((LIB.playlists[pl] || {}).items || []).indexOf(i);   // 曲目下标 → 播放列表项下标
   const fresh = LIB.playing.item !== (at >= 0 ? at : i);           // 比"列表项下标"，与 playing.item 同尺度
@@ -514,8 +624,8 @@ function playIndex(i) {
     pushShared();
     emit(fresh ? 'on_playback_new_track' : 'on_playback_starting');
     emit('on_playlist_items_selection_change');
-    log(`播放：${LIB.tracks[i].title || LIB.tracks[i].path}`);
-  }).catch((e) => log(`播放失败：${e.message}（浏览器可能不支持该格式）`));
+    log(ht('Playing: {0}', LIB.tracks[i].title || LIB.tracks[i].path));
+  }).catch((e) => log(ht('Playback failed: {0} (the browser may not support this format)', e.message)));
 }
 
 function nextTrack(d) {
@@ -556,7 +666,7 @@ window.__RHINE_CMD__ = (cmd) => {
     else if (/system/i.test(what)) mode = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
     else mode = currentMode === 'dark' ? 'light' : 'dark';          // "Switch to other mode"
     applyLook({ mode });
-    log(`模式切换 → ${mode}`);
+    log(ht('Mode switched → {0}', mode));
     return;
   }
   // 配色方案 / 预设导入（原版：restart foobar2000 with /columnsui:import-quiet <fcl>）
@@ -564,7 +674,7 @@ window.__RHINE_CMD__ = (cmd) => {
     let req = {};
     try { req = JSON.parse(cmd.slice(7)); } catch (e) { }
     applyLook({ scheme: req.scheme, mode: req.mode });
-    log(`配色方案 → ${req.scheme}（${req.mode}）`);
+    log(ht('Colour scheme → {0} ({1})', req.scheme, req.mode));
     return;
   }
   if (cmd === 'add-music') { loadFsLibrary(); return; }
@@ -634,7 +744,7 @@ window.__RHINE_CMD__ = (cmd) => {
       LIB.selection = { playlist: pl, items: [] };
       if (LIB.focusPlaylist === pl) { LIB.focus = Math.min(LIB.focus, p.items.length - 1); LIB.focusTrack = trackOf(pl, LIB.focus); }
       pushShared(); emit('on_playlist_items_removed', pl); emit('on_playlist_items_selection_change');
-      log(`播放列表移除 ${gone.length} 项`);
+      log(ht('Removed {0} playlist items', gone.length));
     }
     return;
   }
@@ -657,7 +767,7 @@ window.__RHINE_CMD__ = (cmd) => {
     if (LIB.playlists[pl] && name) {
       LIB.playlists[pl].name = name;
       pushShared(); emit('on_playlists_changed');
-      log(`播放列表改名 → ${name}`);
+      log(ht('Playlist renamed → {0}', name));
     }
     return;
   }
@@ -713,7 +823,7 @@ window.__RHINE_CMD__ = (cmd) => {
     const pos = Number.isFinite(at) && at >= 0 && at <= LIB.playlists.length ? at : LIB.playlists.length;
     LIB.playlists.splice(pos, 0, { name, items, auto: true });   // auto: plman.IsAutoPlaylist 用
     pushShared(); emit('on_playlists_changed');
-    log(`自动播放列表「${name}」：${items.length} 首`);
+    log(ht('Auto playlist “{0}”: {1} tracks', name, items.length));
     return pos;
   }
   if (cmd.startsWith('delete-playlist:')) {
@@ -725,7 +835,7 @@ window.__RHINE_CMD__ = (cmd) => {
     if (LIB.playing && LIB.playing.playlist > i) LIB.playing.playlist--;
     if (LIB.focusPlaylist > i) LIB.focusPlaylist--;
     pushShared(); emit('on_playlists_changed');
-    log(`播放列表已删除（原下标 ${i}）`);
+    log(ht('Playlist deleted (was index {0})', i));
     return true;
   }
   console.log('宿主命令（暂未实现）:', cmd);
@@ -755,8 +865,8 @@ function prefStats() {
     files: tracks.length, albums,
     size: size ? (size / 1048576).toFixed(1) + ' MB' : '—',
     dur: dur ? (hh ? hh + ':' : '') + String(mm).padStart(2, '0') + ':' + String(ss).padStart(2, '0') : '—',
-    source: location.search.includes('demo=1') ? '演示曲库（?demo=1）'
-      : (LIB.files && LIB.files.length ? '本地文件夹（File System Access）' : '未载入'),
+    source: location.search.includes('demo=1') ? ht('Demo library (?demo=1)')
+      : (LIB.files && LIB.files.length ? ht('Local folder (File System Access)') : ht('Not loaded')),
   };
 }
 
@@ -772,8 +882,8 @@ function prefOpen() {
   const head = document.createElement('div');
   head.style.cssText = `display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid ${PREF.hair}`;
   head.innerHTML = `<span style="width:6px;height:6px;background:${PREF.fg};display:inline-block"></span>`
-    + `<span style="letter-spacing:.14em">PREFERENCES · 网页版首选项</span>`
-    + `<span style="flex:1"></span><span style="color:${PREF.soft};font-size:11px">原版这里是 foobar2000 的原生设置</span>`;
+    + `<span style="letter-spacing:.14em;white-space:nowrap">${ht('PREFERENCES · Web preferences')}</span>`
+    + `<span style="flex:1"></span><span style="color:${PREF.soft};font-size:11px">${ht('In the original this is foobar2000’s native preferences')}</span>`;
   const x = document.createElement('button');
   x.textContent = '✕';
   x.style.cssText = `margin-left:12px;background:none;border:1px solid ${PREF.hair};color:${PREF.fg};font:12px ${PREF.font};padding:2px 8px;cursor:pointer`;
@@ -816,53 +926,64 @@ function prefOpen() {
   };
 
   // ---- 曲库 ----
-  section('曲库 / MEDIA LIBRARY');
-  line('来源', s.source);
-  line('曲目 / 专辑', `${s.files} 首 / ${s.albums} 张`);
-  line('总时长 / 体积', `${s.dur} / ${s.size}`);
+  section(ht('Library / MEDIA LIBRARY'));
+  line(ht('Source'), s.source);
+  line(ht('Tracks / albums'), `${s.files} / ${s.albums}`);
+  line(ht('Duration / size'), `${s.dur} / ${s.size}`);
   buttons([
-    ['选音乐文件夹…', () => { prefClose(); loadFsLibrary(); }, true],
-    ['重新扫描', () => { log('重新扫描曲库…'); location.reload(); }],
-    ['载入演示曲库', () => { location.href = location.pathname + '?demo=1'; }],
+    [ht('Choose music folder…'), () => { prefClose(); loadFsLibrary(); }, true],
+    [ht('Rescan'), () => { log(ht('Re-scanning the library…')); location.reload(); }],
+    [ht('Load demo library'), () => { location.href = location.pathname + '?demo=1'; }],
   ]);
-  line('', `<span style="color:${PREF.soft};font-size:11px">说明：本地文件夹的目录句柄持久化（IndexedDB）还没做，重扫需要重新选一次目录。</span>`);
+  line('', `<span style="color:${PREF.soft};font-size:11px">${ht('Note: folder-handle persistence (IndexedDB) is not implemented yet, so a rescan asks for the folder again.')}</span>`);
 
   // ---- 缓存与设置 ----
-  section('缓存与设置 / CACHE');
-  line('波形缓存', '解码后的整轨波形存在各面板内存里（配合「清空」重算）');
+  section(ht('Cache / CACHE'));
+  line(ht('Waveform cache'), ht('Decoded whole-track waveforms live in each panel’s memory (clear to recompute)'));
   buttons([
-    ['清空波形 / 封面缓存', () => {
+    [ht('Clear waveform / cover cache'), () => {
       let n = 0;
       for (const p of PANELS) { const w = p.__frame && p.__frame.contentWindow; try { if (w && w.__rhine && w.__rhine.clearCache) n += w.__rhine.clearCache() || 0; } catch (e) { } }
-      log(`已清空缓存：${n} 条（波形会在下次进入 SIGNAL 视图时重新解码）`);
+      log(ht('Cache cleared: {0} entries (waveforms are decoded again next time the Signal view opens)', n));
       prefClose();
     }],
-    ['恢复默认设置…', () => {
-      if (!confirm('清空全部设置（配色方案 / 视图 / 皮肤 / 界面语言…）并重新载入？')) return;
+    [ht('Reset all settings…'), () => {
+      if (!confirm(ht('Clear all settings (colour scheme / view / skin / interface language…) and reload?'))) return;
       try {
         const drop = [];
         for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && (k.indexOf('rhine:file:') === 0 || k.indexOf('rhine:prop:') === 0)) drop.push(k); }
         drop.forEach((k) => localStorage.removeItem(k));
       } catch (e) { }
-      log('设置已恢复默认，正在重新载入…');
+      log(ht('Settings restored to defaults, reloading…'));
       location.reload();
     }],
   ]);
 
   // ---- 快捷键 ----
-  section('快捷键 / SHORTCUTS');
-  for (const [k, v] of [['1 – 5', '切换五个视图（档案 / 播放列表 / 歌词 / 信号 / 外观）'], ['T', '浅色 / 深色'], ['P', '播放列表预设 Album ⇄ Index'], ['B', '播放开场影片'], ['S', '整库随机播放'], ['R', '档案视图里随机抽取'], ['I', '查看 / 检查当前专辑'], ['/', '搜索（档案视图里就地过滤，其它视图建 Search 列表）'], ['Esc', '退出搜索 / 关闭浮层'], ['空格', '播放 / 暂停']]) line(k, v);
+  section(ht('Shortcuts / SHORTCUTS'));
+  for (const [k, v] of [
+    ['1 – 5', ht('Switch between the five views (Archive / Playlists / Lyrics / Signal / Style)')],
+    ['T', ht('Light / dark')],
+    ['P', ht('Playlist preset Album ⇄ Index')],
+    ['B', ht('Play the intro film')],
+    ['S', ht('Shuffle the whole library')],
+    ['R', ht('Random pick in the Archive')],
+    ['I', ht('Inspect the current album')],
+    ['/', ht('Search (filters the Archive in place; other views create a Search playlist)')],
+    ['Esc', ht('Leave the search / close overlays')],
+    ['␣', ht('Play / pause')],
+  ]) line(k, v);
 
   // ---- 关于 ----
-  section('关于 / ABOUT');
+  section(ht('About / ABOUT'));
   const ver = (manifest && manifest.text && String(manifest.text['themes/audio-archive/VERSION'] || '').trim()) || '—';
-  line('主题版本', `RhinE ${ver}`);
-  line('移植', 'RhinE-UI · 主题 JS 与原版 1.4.0 逐字节一致');
-  line('清单构建于', (manifest && manifest.built) ? String(manifest.built).replace('T', ' ').slice(0, 19) : '—');
-  line('面板', `${PANELS.length} 个 iframe 面板 · 清单 ${manifest ? manifest.files.length : '?'} 个文件`);
-  line('视口 / 缩放', `${innerWidth}×${innerHeight} CSS @ dpr ${devicePixelRatio}`);
-  line('浏览器', (navigator.userAgent.match(/(Chrome|Edg|Firefox|Safari)\/[\d.]+/) || [navigator.userAgent.slice(0, 40)])[0]);
-  line('渲染', `Canvas 2D · 字体 ${document.fonts && document.fonts.check('12px "Geist Mono"') ? '已加载' : '未加载'}`);
+  line(ht('Theme version'), `RhinE ${ver}`);
+  line(ht('Port'), ht('RhinE-UI · theme JS byte-identical to the original 1.4.0'));
+  line(ht('Manifest built'), (manifest && manifest.built) ? String(manifest.built).replace('T', ' ').slice(0, 19) : '—');
+  line(ht('Panels'), `${PANELS.length} · ${manifest ? manifest.files.length : '?'}`);
+  line(ht('Viewport / scale'), `${innerWidth}×${innerHeight} @ dpr ${devicePixelRatio}`);
+  line(ht('Browser'), (navigator.userAgent.match(/(Chrome|Edg|Firefox|Safari)\/[\d.]+/) || [navigator.userAgent.slice(0, 40)])[0]);
+  line(ht('Rendering'), `Canvas 2D · ${document.fonts && document.fonts.check('12px "Geist Mono"') ? ht('Fonts loaded') : ht('Fonts not loaded')}`);
 
   wrap.addEventListener('mousedown', (e) => { if (e.target === wrap) prefClose(); });
   // ⚠️ Esc 必须挂在**每个面板文档**上：整个 UI 都是 iframe，键盘焦点通常还在某个面板里，
@@ -878,7 +999,8 @@ function prefOpen() {
   for (const p of PANELS) { try { p.__frame.contentWindow.document.addEventListener('keydown', onKey, true); } catch (err) { } }
   document.body.appendChild(wrap);
   prefEl = wrap;
-  log('打开网页版首选项');
+  applyHostLang();          // HUD 按钮也跟着语言走
+  log(ht('Opened the web preferences'));
 }
 
 
