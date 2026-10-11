@@ -114,12 +114,15 @@ function buildScriptOrders(text) {
 /* ---------------------------------------------------------------------------- 清单 -- */
 function buildManifest() {
   const text = {}, images = {}, files = [];
+  // 这些目录不属于"主题资源"，扫进来只会让清单变大变慢：.git（本仓库自己的对象库）、
+  // node_modules、以及开发用 Chrome 配置（含缓存，几万个文件）
+  const SKIP = new Set(['.git', 'node_modules', 'chrome-profile', '.dev/chrome-profile']);
   let bytes = 0;
-  const walk = (dir) => {
+  const walk = (dir, relDir = '') => {
     for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
+      const rel = relDir ? relDir + '/' + ent.name : ent.name;
+      if (ent.isDirectory()) { if (!SKIP.has(rel) && !SKIP.has(ent.name)) walk(path.join(dir, ent.name), rel); continue; }
       const full = path.join(dir, ent.name);
-      if (ent.isDirectory()) { walk(full); continue; }
-      const rel = path.relative(ROOT, full).split(path.sep).join('/');
       const ext = path.extname(ent.name).toLowerCase();
       const size = fs.statSync(full).size;
       bytes += size;

@@ -68,8 +68,22 @@
 
   /* ============================================================== 绘制对象 -- */
 
+  const BASE_D = new WeakMap();   // 每个绘图上下文的基准缩放（主画布 = DPR，CreateImage 的层 = 它自己的 DPR）
+
   function makeGr(ctx, owner) {
     const stack = [];
+    // 该上下文自己的"基准变换"：主画布 = DPR 缩放（主题按 CSS px 画，画布后备是 W×DPR），
+    // CreateImage 的离屏层 = 单位矩阵（就是按设备像素 1:1 画）。
+    //
+    // ⚠️⚠️ SetTransform / ResetTransform 必须回到**这个基准**，不能回到单位矩阵：
+    //    主题的 quadImage / drawSpineLabel / drawTopTitle / renderLayer 都是
+    //    "SetTransform(仿射矩阵) → DrawImage/DrawText → ResetTransform" 的写法。
+    //    一旦重置成单位矩阵，DPR≠1（例如 Windows 150% 缩放、dpr=1.5）时，
+    //    这些内容的坐标就被当成设备像素 → 整体缩到 1/DPR 倍并错位：
+    //    实测症状正是"封面四边形/标题条/脊标比磁带外壳小 2/3 并飘在半空"。
+    //    在 dpr=1 的窗口里两者等价，所以本地看永远正常 —— 必须按 dpr≠1 验证。
+    const baseScale = () => (owner === CANVAS ? DPR : (BASE_D.get(ctx) || 1));
+    const applyBase = () => { const d = baseScale(); ctx.setTransform(d, 0, 0, d, 0, 0); };
     const g = {
       /* --- 填充 / 描边 --- */
       FillSolidRect(x, y, w, h, colour) {
@@ -160,12 +174,16 @@
         if (!el || !img.__ready) return;
         const prevAlpha = ctx.globalAlpha;
         if (alpha != null) ctx.globalAlpha = prevAlpha * clamp(alpha, 0, 1);
+        // 源矩形以"逻辑像素"给出（img.Width/Height 也是逻辑值）：CreateImage 的层后备被放大了
+        // __dpr 倍，所以源坐标要乘回去，否则会只取到左上角 1/__dpr（实测症状：淡出色卡只剩一角）
+        const sd = img.__dpr || 1;
+        const rx = (sx || 0) * sd, ry = (sy || 0) * sd, rw = (sw || img.Width) * sd, rh = (sh || img.Height) * sd;
         ctx.save();
         if (angle) {   // D2D 的角度是"弧度"（正数顺时针），绕目标矩形中心
           ctx.translate(dx + dw / 2, dy + dh / 2); ctx.rotate(angle); ctx.translate(-dw / 2, -dh / 2);
-          ctx.drawImage(el, sx || 0, sy || 0, sw || img.Width, sh || img.Height, 0, 0, dw, dh);
+          ctx.drawImage(el, rx, ry, rw, rh, 0, 0, dw, dh);
         } else {
-          ctx.drawImage(el, sx || 0, sy || 0, sw || img.Width, sh || img.Height, dx, dy, dw, dh);
+          ctx.drawImage(el, rx, ry, rw, rh, dx, dy, dw, dh);
         }
         ctx.restore();
         ctx.globalAlpha = prevAlpha;
@@ -175,7 +193,8 @@
         ctx.save();
         if (fx.__css) ctx.filter = fx.__css;
         const dw = w || srcW || fx.__input.Width, dh = h || srcH || fx.__input.Height;
-        ctx.drawImage(fx.__input.__el, 0, 0, fx.__input.Width, fx.__input.Height, x, y, dw, dh);
+        const id = fx.__input.__dpr || 1;
+        ctx.drawImage(fx.__input.__el, 0, 0, fx.__input.Width * id, fx.__input.Height * id, x, y, dw, dh);
         ctx.restore();
       },
 
@@ -187,8 +206,8 @@
       PopClip() { if (stack.length) { stack.pop(); ctx.restore(); } },
       PushTransform(m) { ctx.save(); if (m) applyMatrix(ctx, m); stack.push(1); },
       PopTransform() { if (stack.length) { stack.pop(); ctx.restore(); } },
-      SetTransform(m) { ctx.setTransform(1, 0, 0, 1, 0, 0); applyMatrix(ctx, m); },
-      ResetTransform() { ctx.setTransform(1, 0, 0, 1, 0, 0); },
+      SetTransform(m) { applyBase(); applyMatrix(ctx, m); },
+      ResetTransform() { applyBase(); },
       Translate(x, y) { ctx.translate(x, y); },
       Scale(sx, sy, cx, cy) { if (cx != null) ctx.translate(cx, cy); ctx.scale(sx, sy); if (cx != null) ctx.translate(-cx, -cy); },
       SetSmoothingMode(m) { ctx.imageSmoothingEnabled = m !== 0; },
@@ -275,11 +294,19 @@
     },
     Image(path) { return imageFor(norm(path)); },
     CreateImage(w, h) {
+      // 逻辑尺寸 w×h，后备画布按 DPR 放大 + 基准变换 = DPR：
+      // 这样 renderLayer() 里按 CSS px 画出来的资料卡在 150% 缩放下依然清晰
+      // （否则后备只有 1×，回贴时被放大 1.5 倍 → 糊）。
+      // 图像句柄的 Width/Height 仍是逻辑值，DrawImage 会按 __dpr 换算源矩形。
+      const d = window.devicePixelRatio || 1;
       const cv = document.createElement('canvas');
-      cv.width = Math.max(1, Math.round(w)); cv.height = Math.max(1, Math.round(h));
+      const lw = Math.max(1, Math.round(w)), lh = Math.max(1, Math.round(h));
+      cv.width = Math.max(1, Math.round(lw * d)); cv.height = Math.max(1, Math.round(lh * d));
       const g2 = cv.getContext('2d');
+      g2.setTransform(d, 0, 0, d, 0, 0);
+      BASE_D.set(g2, d);
       return {
-        __el: cv, __ready: true, __raw: cv, Width: cv.width, Height: cv.height, __image: true,
+        __el: cv, __ready: true, __raw: cv, Width: lw, Height: lh, __dpr: d, __image: true,
         GetGraphics() { return makeGr(g2, cv); },
         ReleaseGraphics() { },
         Dispose() { },
