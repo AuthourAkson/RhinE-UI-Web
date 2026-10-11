@@ -1,0 +1,8 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/blog-verify.mjs
+线上 style.css 里的 .cards 规则: .cards{display:grid;gap:1rem;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+
+4 张卡片的实际位置: [{"t":"画音乐 DrawMusic","x":153,"y":306,"w":228},{"t":"world.execute(me);","x":397,"y":306,"w":228},{"t":"作品墙","x":641,"y":306,"w":228},{"t":"RhinE · Audio Archive","x":885,"y":306,"w":228}]
+
+是否同一行: ✓ 4 张同一行
+已存 D:\AgentTestLab\RhinE-UI\.dev\blog-cards-1791747953962.png
+[chrome-run] 已关闭无头 Chrome

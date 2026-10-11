@@ -1,0 +1,5 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/blog-shot.mjs
+标题: Akson 的小站
+卡片链接: ["画音乐 DrawMusic → /draw/","world.execute(me); → /world/","作品墙 → /draw/gallery/gallery.html","RhinE · Audio Archive → https://rhine.auak.dpdns.org/"]
+已存 .dev/blog-with-rhine.png
+[chrome-run] 已关闭无头 Chrome
