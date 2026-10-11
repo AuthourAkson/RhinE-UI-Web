@@ -276,6 +276,57 @@ const SHARED = { transport: { playing: false, paused: false, time: 0, length: 0,
 const audio = new Audio();
 audio.preload = 'metadata';
 
+/* ---------------------------------------------------------------- 实时可视化 -- */
+// 主题的 signal 视图每帧调 fb.GetAudioChunkTo()（见主题 lib/audio.js:24），期望拿到**交错声道**的
+// Float32 PCM；它自己再做 2048 点 FFT、48 个对数频段、峰值/RMS/立体声相关性。
+// 网页版：<audio> → MediaElementSource → ChannelSplitter → 两个 AnalyserNode（真正的左右声道，
+// 所以 STEREO CORR 是真的而不是恒定 1）。全部同步，面板在渲染帧里直接读。
+const PCM = { ac: null, split: null, L: null, R: null, bufL: null, bufR: null, failed: false };
+function ensureAudioGraph() {
+  if (PCM.ac || PCM.failed) return PCM.ac;
+  try {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) { PCM.failed = true; return null; }
+    const ac = new AC();
+    const src = ac.createMediaElementSource(audio);
+    const split = ac.createChannelSplitter(2);
+    const L = ac.createAnalyser(), R = ac.createAnalyser();
+    L.fftSize = R.fftSize = 2048;                     // 主题一次要 2048 个样本
+    src.connect(split);
+    split.connect(L, 0);
+    split.connect(R, 1);
+    // ⚠️ createMediaElementSource 会把音频"接管"进音频图：必须接回 destination，
+    //    否则声音只进分析器、扬声器静音；上下文被挂起时同样会静音，所以下面每次都尝试 resume
+    src.connect(ac.destination);
+    Object.assign(PCM, { ac, split, L, R, bufL: new Float32Array(L.fftSize), bufR: new Float32Array(R.fftSize) });
+    log(`音频可视化就绪：${ac.sampleRate} Hz / 2 声道`);
+  } catch (e) {
+    PCM.failed = true;
+    log('音频可视化初始化失败：' + e.message);
+    return null;
+  }
+  return PCM.ac;
+}
+// 浏览器要求音频上下文在**用户手势之后**才能运行。如果等到 signal 视图第一次取 PCM 时才建图，
+// 而那一刻上下文又处于挂起状态，声音会被音频图"接管但不输出" → 静音。所以在第一次点击/按键时
+// 就把它建好并 resume（此时手势一定存在），播放时它就是 running 的。
+window.addEventListener('pointerdown', () => { const ac = ensureAudioGraph(); if (ac && ac.state === 'suspended') ac.resume().catch(() => { }); }, { once: true });
+window.addEventListener('keydown', () => { const ac = ensureAudioGraph(); if (ac && ac.state === 'suspended') ac.resume().catch(() => { }); }, { once: true });
+/** shim 的 fb.GetAudioChunkTo 同步转发到这里：写入交错样本，返回浮点数个数 */window.__RHINE_AUDIO_PCM__ = (chunk, seconds, info) => {
+  const ac = ensureAudioGraph();
+  if (!ac || !chunk) return 0;
+  if (ac.state === 'suspended') ac.resume().catch(() => { });
+  if (ac.state !== 'running' || audio.paused) return 0;   // 没在播放就返回 0（主题会让频段自然衰减）
+  const n = Math.min(PCM.bufL.length, Math.max(1, Math.round((seconds || 0.046) * ac.sampleRate)));
+  PCM.L.getFloatTimeDomainData(PCM.bufL);
+  PCM.R.getFloatTimeDomainData(PCM.bufR);
+  const start = PCM.bufL.length - n;                      // 取最近 n 个样本
+  let w = 0;
+  for (let i = 0; i < n; i++) { chunk[w++] = PCM.bufL[start + i] || 0; chunk[w++] = PCM.bufR[start + i] || 0; }
+  if (info) { info.SampleRate = ac.sampleRate; info.ChannelCount = 2; info.SampleCount = n; }
+  return w;
+};
+
 /** 把宿主状态推给所有面板（同一个对象，播放进度自动同步） */
 function pushShared() {
   for (const p of PANELS) {
@@ -445,9 +496,9 @@ function emit(evt, arg) {
 function playIndex(i) {
   const src = trackSrc(i);
   if (!src) { log(`第 ${i + 1} 首没有可播放来源`); return; }
-  const fresh = LIB.playing.item !== i;
   const pl = LIB.activePlaylist >= 0 ? LIB.activePlaylist : 0;
   const at = ((LIB.playlists[pl] || {}).items || []).indexOf(i);   // 曲目下标 → 播放列表项下标
+  const fresh = LIB.playing.item !== (at >= 0 ? at : i);           // 比"列表项下标"，与 playing.item 同尺度
   LIB.playing = { playlist: pl, item: at >= 0 ? at : i };
   LIB.focusPlaylist = pl; LIB.focus = LIB.playing.item; LIB.focusTrack = i;
   LIB.selection = { playlist: pl, items: [LIB.playing.item] };     // 列表跟着播放走（与双击那一行一致）

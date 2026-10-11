@@ -75,13 +75,18 @@ SIGNAL PROFILE 卡片 / 底部传输栏；键盘切换视图；**浅色深色切
   列宽/列格式取自主题自己的 `columns/preset-*.json` 与 `.fcl` 预设，与 head 面板画的列标题逐像素对齐；
   ALBUM/INDEX 两套预设、分组头、正在播放行整行橙色、单击选择 / Shift 范围 / Ctrl 切换 / 双击播放 /
   方向键与 PageUp·Down、右键菜单、点列标题排序、双击重命名、头部统计（曲目数 · 总时长 · 总体积）
+- **SIGNAL 视图（04）的真实现场**：
+  · 实时频谱 `fb.GetAudioChunkTo` —— 父页面把 `<audio>` 接进 Web Audio
+    （MediaElementSource → ChannelSplitter → 两个 AnalyserNode），同步填回**交错声道**的 Float32 PCM，
+    主题自己做 2048 点 FFT、48 个对数频段、峰值/RMS/立体声相关性 → ∞ 管线里的脉冲流动 + 频谱带
+  · 整轨波形 `utils.GetWaveformAsync` —— 面板内 `decodeAudioData` 整轨解码，按 1024 个桶取绝对峰值，
+    分批回调（可取消）并归一化 → 下方 SIGNAL TRACE 波形 + 播放头
 - 实测：6 首 / 3 张专辑解析 **~20ms**；档案视图货架显示真实封面，
   卡片显示 `Test Album Two · ANOTHER ARTIST · 2023 / 02 TRACKS / 00:14 · FLAC 16/44.1` + 曲目行 `01 Alpha 00:08`
 
 **未做**（后续）：
 - 曲库缓存（IndexedDB）——现在是每次启动重新解析，目录句柄也还没持久化
-- 歌词（在线 LRCLIB + 内嵌）需要接 `utils.DownloadFileAsync` / `on_download_file_done`
-- SIGNAL 视图的真实波形与实时频谱（`utils.GetWaveformAsync` / `fb.GetAudioChunkTo`）
+- 歌词（在线 LRCLIB + 内嵌）：内嵌歌词还差标签解析器提取 USLT/LYRICS；在线那条要接 `DownloadFileAsync`
 - 顶栏 MENU 里 foobar2000 的原生菜单项（网页版没有对应物，只保证不崩）
 - 整库随机（`S`）需要 `plman.InsertPlaylistItemsFilter` 等播放列表编辑接口
 

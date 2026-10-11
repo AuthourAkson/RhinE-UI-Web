@@ -429,9 +429,38 @@
    *     `h.RawPath === k.RawPath && h.SubSong === k.SubSong`（archive.js 的 sameTrack），
    *     缺了这两个字段两边都是 undefined → **所有曲目互相相等** → 选中/提升/居中逻辑全乱
    *     （症状：点一张外壳，另一张被当成同一张，位置和动画都错）。 */
+  function makeFileInfo(t) {
+    // 主题只用到 MetaFind / MetaValueCount / MetaValue（lib/lyrics.js:64 读内嵌歌词标签），
+    // 这里按 foobar2000 的字段名给出曲目已知的元数据；技术信息一并给出（Info* 系列）
+    const meta = [];
+    const add = (name, v) => { if (v != null && v !== '') meta.push([name.toUpperCase(), [String(v)]]); };
+    add('TITLE', t.title); add('ARTIST', t.artist); add('ALBUM', t.album);
+    add('ALBUM ARTIST', t.albumArtist || t.artist); add('GENRE', t.genre); add('DATE', t.year);
+    add('TRACKNUMBER', t.track); add('DISCNUMBER', t.disc); add('PLAY_COUNT', t.plays);
+    if (t.lyrics) add('LYRICS', t.lyrics);          // 标签解析器将来支持内嵌歌词时自动出现在这里
+    const info = [['codec', t.codec || ''], ['bitrate', t.kbps ? t.kbps * 1000 : ''], ['samplerate', t.rate || ''], ['channels', t.channels || 2]];
+    return {
+      MetaCount: meta.length,
+      MetaName: (i) => (meta[i] ? meta[i][0] : ''),
+      MetaValueCount: (i) => (meta[i] ? meta[i][1].length : 0),
+      MetaValue: (i, v) => (meta[i] ? (meta[i][1][v] == null ? '' : meta[i][1][v]) : ''),
+      MetaFind: (name) => { const n = String(name).toUpperCase(); return meta.findIndex((e) => e[0] === n); },
+      InfoCount: info.length,
+      InfoName: (i) => (info[i] ? info[i][0] : ''),
+      InfoValueCount: (i) => (info[i] ? 1 : 0),
+      InfoValue: (i) => (info[i] ? String(info[i][1]) : ''),
+      InfoFind: (name) => { const n = String(name).toLowerCase(); return info.findIndex((e) => e[0] === n); },
+    };
+  }
   function makeTrackHandle(i) {
     const t = trackAt(i);
-    return t ? { __id: i, __track: true, Length: t.length || 0, Path: t.path || '', RawPath: t.path || '', SubSong: 0, FileSize: t.size || 0 } : null;
+    if (!t) return null;
+    return {
+      __id: i, __track: true, Length: t.length || 0, Path: t.path || '', RawPath: t.path || '', SubSong: 0, FileSize: t.size || 0,
+      // ⚠️ 必须存在：主题的 loadLyrics() 会调它，缺了会抛 TypeError 并在 npChanged 里中断，
+      //    导致同一函数后面的 waveLoad() 永远走不到（症状：signal 视图的波形一直是空的）
+      GetFileInfo: () => (t.__fileInfo || (t.__fileInfo = makeFileInfo(t))),
+    };
   }
 
   /** 把曲目摊平成 foobar2000 的字段名（TitleFormat 用） */
@@ -450,6 +479,28 @@
   }
 
   const SHARED = () => (window.__RHINE_SHARED__ || { transport: {}, library: [], playlists: [] });
+
+  // 波形解码用的 AudioContext（懒建，只此一个）
+  let WAVE_AC = null;
+  /** 正在播放的**曲库曲目下标**：playing.item 是播放列表项下标，要经播放列表映射 */
+  function playingTrackIndex() {
+    const L = LIB_ROOT();
+    if (!L || !L.playing || L.playing.item < 0) return -1;
+    const pl = libPlaylists()[L.playing.playlist];
+    if (!pl || !pl.items) return -1;
+    const ti = pl.items[L.playing.item];
+    return ti == null ? -1 : ti;
+  }
+  /** 曲目的可播放/可解码来源：HTTP 演示通道的 url，或选目录拿到的 File（生成 blob URL，缓存在曲目上） */
+  function trackSource(t) {
+    if (!t) return null;
+    if (t.url) return t.url;
+    if (t.file) {
+      if (!t.__objUrl) { try { t.__objUrl = URL.createObjectURL(t.file); } catch (e) { return null; } }
+      return t.__objUrl;
+    }
+    return null;
+  }
 
   /** 句柄列表（fb.CreateHandleList / fb.GetLibraryItems / plman.GetPlaylistItems 的返回值）
    *  ⚠️ JSplitter 的句柄列表是**类数组**：主题里既有 `list.Item(i)` 也有 `list[i]` 下标访问
@@ -497,7 +548,10 @@
     get Volume() { return SHARED().transport.volume != null ? SHARED().transport.volume : -10; },
     // 主题的音量条是**赋值**（transport.js: fb.Volume = pos2vol(...)），只给 getter 会在严格模式下抛错
     set Volume(v) { HOST.command('volume:' + v); },
-    GetNowPlaying() { const L = LIB_ROOT(); return L && L.playing && L.playing.item >= 0 ? makeTrackHandle(L.playing.item) : null; },
+    // ⚠️ L.playing.item 是**播放列表项下标**（与 plman 对齐），不是曲库曲目下标 ——
+    //    必须经播放列表映射一次，否则 GetNowPlaying() 会返回"另一首"甚至 null
+    //    （症状：signal 视图拿不到 handle，波形那条线一直是空的）
+    GetNowPlaying() { const i = playingTrackIndex(); return i >= 0 ? makeTrackHandle(i) : null; },
     GetFocusItem() { const L = LIB_ROOT(); const t = L ? (L.focusTrack != null ? L.focusTrack : -1) : -1; return t >= 0 ? makeTrackHandle(t) : null; },
     GetLibraryItems() { const list = handleList(libTracks().map((_, i) => makeTrackHandle(i)).filter(Boolean)); return list; },
     CreateHandleList() { return handleList(); },
@@ -519,6 +573,14 @@
     PlayOrPause() { HOST.command('toggle'); }, Play() { HOST.command('play'); }, Pause() { HOST.command('pause'); },
     Stop() { HOST.command('stop'); }, Next() { HOST.command('next'); }, Prev() { HOST.command('prev'); },
     VolumeUp() { HOST.command('vol-up'); }, VolumeDown() { HOST.command('vol-down'); },
+    // 实时可视化：主题每帧调 analyseAudio(dt) → fb.GetAudioChunkTo(_pcm, 2048/采样率, 0, _info)
+    // 期望：_pcm 是**交错声道**的 Float32，返回写入的浮点数个数，并把 SampleRate/ChannelCount 写进 info。
+    // 网页版由父页面用 Web Audio（<audio> → ChannelSplitter → 两个 AnalyserNode）取最近 2048 个样本，
+    // 同步填回这个数组 —— 主题随后自己做 2048 点 FFT、48 个对数频段、峰值/RMS/立体声相关性。
+    GetAudioChunkTo(chunk, seconds, flags, info) {
+      try { return (parent.__RHINE_AUDIO_PCM__ && parent.__RHINE_AUDIO_PCM__(chunk, seconds, info)) || 0; } catch (e) { return 0; }
+    },
+    GetAudioChunk(chunk, seconds, flags, info) { return fb.GetAudioChunkTo(chunk, seconds, flags, info); },
     RunMainMenuCommand(path) {
       const p = String(path || '');
       // 主题的 Light/Dark 切换走的就是这条：View › Mode
@@ -660,6 +722,12 @@
     get(t, k) { if (k in t) return t[k]; return () => undefined; },
   });
 
+  // <profile>\audio-archive-cache\ 下的东西是**缓存**（波形 1024 个点 ≈ 5KB 一条），
+  // 放进 localStorage 会很快撑爆配额，所以单独用内存表：语义一致（IsFile/Read/Write/Remove 都能命中），
+  // 只是不跨会话保留 —— 主题读不到缓存时会自己重新解码（waveform.js:25 的分支）。
+  const CACHE_FILES = new Map();
+  const isCachePath = (k) => k.startsWith('audio-archive-cache/') || k.startsWith('audio-archive-cache\\');
+
   const utils = {
     // 主题会把设置写进 <profile>\audio-archive-settings.json（utils.WriteTextFile → localStorage 覆盖层），
     // 所以 IsFile / ReadTextFile 必须也认这一层，否则设置读不回来（保真度问题）
@@ -668,17 +736,25 @@
       const k = norm(p);
       if (Object.prototype.hasOwnProperty.call(MANIFEST.text, k)) return true;
       if (Object.prototype.hasOwnProperty.call(MANIFEST.images, k)) return true;
+      if (isCachePath(k)) return CACHE_FILES.has(k);
       try { return localStorage.getItem('rhine:file:' + k) != null; } catch (e) { return false; }
     },
     IsDirectory: (p) => { const d = norm(p).replace(/\/$/, '') + '/'; return (MANIFEST.files || []).some((f) => f.startsWith(d)); },
     ReadTextFile: (p) => {
       const k = norm(p);
       if (Object.prototype.hasOwnProperty.call(MANIFEST.text, k)) return MANIFEST.text[k];
+      if (isCachePath(k)) return CACHE_FILES.has(k) ? CACHE_FILES.get(k) : '';
       try { const v = localStorage.getItem('rhine:file:' + k); if (v != null) return v; } catch (e) { }
       return '';
     },
-    WriteTextFile: (p, s) => { try { localStorage.setItem('rhine:file:' + norm(p), s); } catch (e) { } return true; },
-    CreateFolder: () => true, RemoveFile: () => true,
+    WriteTextFile: (p, s) => {
+      const k = norm(p);
+      if (isCachePath(k)) { CACHE_FILES.set(k, s); return true; }
+      try { localStorage.setItem('rhine:file:' + k, s); } catch (e) { }
+      return true;
+    },
+    CreateFolder: () => true,
+    RemoveFile: (p) => { const k = norm(p); if (isCachePath(k)) CACHE_FILES.delete(k); try { localStorage.removeItem('rhine:file:' + k); } catch (e) { } return true; },
     // 主题用 `for (const f of utils.Glob(root + "*\\case.json"))` 遍历，所以必须返回**可迭代的路径数组**，
     // 且路径保持主题的反斜杠形式（skins.js 会拿它做 slice 运算推导目录名）
     Glob(pattern) {
@@ -687,6 +763,47 @@
       return (MANIFEST.files || []).filter((f) => re.test(f)).map((f) => f.replace(/\//g, '\\'));
     },
     LoadFont: (p) => loadFont(norm(p)),
+    // 全曲波形（SIGNAL 视图的 "signal trace"）：解码一次，按 points 个桶取每桶的绝对峰值。
+    // 契约（同 JSplitter 的 utils.GetWaveformAsync，见主题 lib/waveform.js:33）：
+    //   返回 Promise<Float32Array(points)>；onUpdate(values, start) 渐进回调，
+    //   回调返回 false 表示取消（主题切换曲目时这么返回，解码随即停止）。
+    GetWaveformAsync(handle, points, flags, unused, onUpdate) {
+      const n = Math.max(1, Math.round(points || 1024));
+      const full = new Float32Array(n);
+      const t = handle && handle.__id != null ? trackAt(handle.__id) : null;
+      const src = t ? trackSource(t) : null;
+      if (!src) return Promise.reject(new Error('这一项没有可解码的来源'));
+      // 整轨解码要把 PCM 全放进内存（44.1k 立体声约 21MB/分钟）：超长的先放弃，
+      // 主题的 .catch 会记一行日志、信号迹线留空，不会影响别的
+      if (handle && handle.Length > 2400) return Promise.reject(new Error('曲目过长，跳过整轨解码'));
+      return new Promise((resolve, reject) => {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) { reject(new Error('浏览器不支持 Web Audio')); return; }
+        const ac = WAVE_AC || (WAVE_AC = new AC());
+        fetch(src).then((r) => r.arrayBuffer()).then((buf) => ac.decodeAudioData(buf)).then((ab) => {
+          const chans = [];
+          for (let c = 0; c < ab.numberOfChannels; c++) chans.push(ab.getChannelData(c));
+          const len = ab.length, per = len / n;
+          let i = 0;
+          const CHUNK = 128;
+          const step = () => {
+            const end = Math.min(n, i + CHUNK), vals = new Float32Array(end - i);
+            for (let b = i; b < end; b++) {
+              const a0 = Math.floor(b * per), a1 = Math.min(len, Math.max(a0 + 1, Math.floor((b + 1) * per)));
+              let m = 0;
+              for (const d of chans) for (let k = a0; k < a1; k++) { const v = d[k] < 0 ? -d[k] : d[k]; if (v > m) m = v; }
+              vals[b - i] = m;
+            }
+            full.set(vals, i);
+            const keep = onUpdate ? onUpdate(vals, i) : true;
+            i = end;
+            if (keep === false || i >= n) { resolve(full); return; }
+            setTimeout(step, 0);
+          };
+          step();
+        }).catch(reject);
+      });
+    },
     GetSystemMetrics: (i) => (i === 0 ? screen.width : i === 1 ? screen.height : 16),
     IsKeyPressed: () => false,
     InputBox: (h, c, v) => { const r = window.prompt(c || h || '', v || ''); return r == null ? v || '' : r; },
@@ -710,7 +827,8 @@
     DownloadFile: () => false, DownloadImageAsyncV: (url, onDone) => setTimeout(() => onDone && onDone(null), 0),
     GetAlbumArtAsyncV: () => null, GetAlbumArtAsync: () => null,
     GetAlbumArtAsyncV2: () => Promise.resolve(null),
-    GetWaveformAsync: () => null, GetWaveformAsyncV: () => null,
+    // GetWaveformAsync 的实装在文件上半部分（写实时可视化那段附近）；这里只留未实现的 V 变体
+    GetWaveformAsyncV: () => null,
     ReadINI: () => '', WriteINI: () => true,
     CheckComponent: () => false, GetPackageInfo: () => null,
     FormatDuration: (s) => String(s),
@@ -876,7 +994,23 @@
       console.log(`[Worker 桥] ${name || ''} ← ${file}  →  /workers/library-web.js`);
       workingWorkers.push(w);
 
+      // ⚠️⚠️ 模块 worker 的坑：在它的模块**求值完成之前** postMessage 会被丢掉
+      //      （实测：new Worker(...) 后立刻发，worker 收不到任何东西；延迟 1.2s 发才正常）。
+      //      而主题的写法就是建完立刻 postMessage，于是媒体库时好时坏地永远解析不出来
+      //      （表现为曲库为空、播放列表 0 行、signal 波形没有数据）。
+      //      这里把"就绪前"的消息排队，等 worker 第一次回话、或短延时后统一补发。
+      const bootQueue = [];
+      let booted = false;
+      const bootFlush = () => {
+        if (booted) return;
+        booted = true;
+        for (const m of bootQueue.splice(0)) { try { real.postMessage(m); } catch (e) { } }
+        if (bootQueue.length === 0 && pendingIndex) { const m = pendingIndex; pendingIndex = null; send(m); }
+      };
+      setTimeout(bootFlush, 250);
+
       real.onmessage = (ev) => {
+        bootFlush();
         const m = ev.data || {};
         try {
           if (m.type === 'catalog') {
@@ -890,6 +1024,8 @@
       };
       real.onerror = (e) => { console.error('[库 worker 出错]', e.message || e); if (w.onerror) w.onerror(e); };
 
+      // 就绪前发给真实 worker 的消息先入队（见上面 bootFlush 的说明）
+      const postReal = (m) => { if (booted) real.postMessage(m); else bootQueue.push(m); };
       const send = (msg) => {
         if (!msg) return;
         if (msg.type === 'index') {
@@ -897,11 +1033,11 @@
           const lib = window.__RHINE_LIBRARY__;
           if (!lib || !lib.files || !lib.files.length) { pendingIndex = msg; console.log('[库桥] 索引请求排队（曲库未就绪）gen=' + msg.gen); return; }
           console.log('[库桥] 转发索引请求 gen=' + msg.gen + '，文件 ' + lib.files.length + ' 个');
-          real.postMessage({ cmd: 'index', gen: msg.gen, files: lib.files });
+          postReal({ cmd: 'index', gen: msg.gen, files: lib.files });
         } else if (msg.type === 'covers') {
           const keys = (msg.list || []).map((j) => (typeof j === 'string' ? j : j && j.key)).filter(Boolean);
           console.log('[库桥] 请求封面 ' + keys.length + ' 张');
-          if (keys.length) real.postMessage({ cmd: 'covers', gen: msg.gen, keys });
+          if (keys.length) postReal({ cmd: 'covers', gen: msg.gen, keys });
         }
       };
       w.postMessage = send;
