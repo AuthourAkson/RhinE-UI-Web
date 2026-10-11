@@ -1,0 +1,14 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/lang-persist.mjs
+起始: header:zh-CN stage:zh-CN transport:zh-CN manager:zh-CN head:zh-CN card:zh-CN fx:zh-CN
+
+切到 English…
+  切换后: header:en stage:en transport:en manager:en head:en card:en fx:en
+  整页重载后:
+    header:en stage:en transport:en manager:en head:en card:en fx:en
+
+切回 简体中文…
+  切换后: header:zh-CN stage:zh-CN transport:zh-CN manager:zh-CN head:zh-CN card:zh-CN fx:zh-CN
+  整页重载后:
+    header:zh-CN stage:zh-CN transport:zh-CN manager:zh-CN head:zh-CN card:zh-CN fx:zh-CN
+已存 .dev/en-consistent.png / zh-consistent.png
+[chrome-run] 已关闭无头 Chrome

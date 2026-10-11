@@ -1,0 +1,18 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/close-and-switch.mjs
+起始各面板: {"header":"zh-CN 档案","stage":"zh-CN 档案","transport":"zh-CN 档案","manager":"zh-CN 档案","head":"zh-CN 档案","card":"zh-CN 档案","fx":"zh-CN 档案"}
+
+=== ① 点别处关闭 ===
+  菜单已打开: true  子菜单项数: 27
+  点 stage 面板空白后，菜单还在吗: false
+  点 header 空白后，菜单还在吗: false
+
+=== ② 切到 English ===
+  点击 English…
+  +2000ms 面板异常数=0 {"header":"en ARCHIVE","stage":"zh-CN 档案","transport":"zh-CN 档案","manager":"zh-CN 档案","head":"zh-CN 档案","card":"zh-CN 档案","fx":"zh-CN 档案"}
+  +4000ms 面板异常数=0 {"header":"en ARCHIVE","stage":"zh-CN 档案","transport":"zh-CN 档案","manager":"zh-CN 档案","head":"zh-CN 档案","card":"zh-CN 档案","fx":"zh-CN 档案"}
+  +6000ms 面板异常数=0 {"header":"en ARCHIVE","stage":"zh-CN 档案","transport":"zh-CN 档案","manager":"zh-CN 档案","head":"zh-CN 档案","card":"zh-CN 档案","fx":"zh-CN 档案"}
+  +9000ms 面板异常数=0 {"header":"en ARCHIVE","stage":"zh-CN 档案","transport":"zh-CN 档案","manager":"zh-CN 档案","head":"zh-CN 档案","card":"zh-CN 档案","fx":"zh-CN 档案"}
+  +13000ms 面板异常数=0 {"header":"en ARCHIVE","stage":"zh-CN 档案","transport":"zh-CN 档案","manager":"zh-CN 档案","head":"zh-CN 档案","card":"zh-CN 档案","fx":"zh-CN 档案"}
+  设置文件: "en"
+  已存 .dev/after-switch-en.png
+[chrome-run] 已关闭无头 Chrome

@@ -161,7 +161,12 @@ function bootPanel(p, entry, extra = {}) {
     if (m.type === 'error') { console.error(`[${p.__id}] ${m.data.phase}:`, m.data.message); log(`⚠️ ${p.__id} ${m.data.phase}: ${String(m.data.message).slice(0, 160)}`); }
   });
 
-  frame.addEventListener('load', start);
+  // ⚠️⚠️ 不能只启动一次：主题切换界面语言用的是 window.Reload()（lib/i18n.js →
+  //      lib/bus.js 的 "ui-lang"）——面板 iframe 会**自己重载**，load 事件再次触发。
+  //      若这里因为 p.__started 直接 return，重载后的新页面就永远等不到 __boot
+  //      （它要靠 __boot 拿到清单和脚本顺序才会加载主题脚本）→ 整块面板黑屏。
+  //      用户实测："从中文切到英语，画面直接黑屏"。所以每次 load 都重新启动一次。
+  frame.addEventListener('load', () => { p.__started = false; p.__ready = false; start(); });
   // 有些情况下 load 事件早于脚本就绪 / 或已被消费：轮询兜底
   let tries = 0;
   const poll = () => {

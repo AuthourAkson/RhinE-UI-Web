@@ -1,0 +1,9 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/notify-probe.mjs
+挂探针: {"notify":0,"uiLangMsgs":0,"reloadCalled":0,"bootAt":1791729063542.8}
+stage 的 ui-lang 处理器数量: ["ui-lang","search-end","archive-filter","lyrics-translate","state","inspect","library?"]
+
+点击 English…
+stage 探针: null
+stage 的 getSetting/UI_LANG: {"设置":"(无)","UI_LANG":"zh-CN"}
+header 的 getSetting/UI_LANG: {"设置":"en","UI_LANG":"en"}
+[chrome-run] 已关闭无头 Chrome

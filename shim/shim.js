@@ -778,9 +778,15 @@
     IsDirectory: (p) => { const d = norm(p).replace(/\/$/, '') + '/'; return (MANIFEST.files || []).some((f) => f.startsWith(d)); },
     ReadTextFile: (p) => {
       const k = norm(p);
-      if (Object.prototype.hasOwnProperty.call(MANIFEST.text, k)) return MANIFEST.text[k];
       if (isCachePath(k)) return CACHE_FILES.has(k) ? CACHE_FILES.get(k) : '';
+      // ⚠️⚠️ 顺序很重要：**先看 localStorage 覆盖层，再看仓库里的默认文件**。
+      //    之前反了（先返回 MANIFEST.text），而 audio-archive-settings.json 这份默认文件
+      //    本身就在仓库里 → 于是用户保存过的设置**永远读不回来**，读到的始终是原始默认值。
+      //    症状：界面语言在"点菜单的那个面板"生效（它靠 window.GetProperty 兜底），
+      //    其它面板读默认文件 → 没这个键 → 回退系统语言 → 同一个界面里语言不一致
+      //    （用户实测："只有部分换成了英文"）。同理，配色/视图/皮肤等设置也都读不回来。
       try { const v = localStorage.getItem('rhine:file:' + k); if (v != null) return v; } catch (e) { }
+      if (Object.prototype.hasOwnProperty.call(MANIFEST.text, k)) return MANIFEST.text[k];
       return '';
     },
     WriteTextFile: (p, s) => {
@@ -1011,10 +1017,24 @@
   function closeMenu() {
     subCloseNow();
     if (MENU_DOM) { MENU_DOM.remove(); MENU_DOM = null; }
-    const d = menuDoc();
-    d.removeEventListener('mousedown', onMenuOutside, true);
-    d.removeEventListener('keydown', onMenuKey, true);
-    (menuWin()).removeEventListener('resize', closeMenu, true);
+    // ⚠️ 菜单画在顶层文档上，但**整个 UI 都是 iframe**：在面板里点击不会冒泡到顶层文档，
+    //    所以只挂顶层的话"点别处关不掉"（用户实测）。这里给每个同源面板文档都挂一份。
+    for (const [w, d] of menuDocs()) {
+      d.removeEventListener('mousedown', onMenuOutside, true);
+      d.removeEventListener('keydown', onMenuKey, true);
+      try { w.removeEventListener('resize', closeMenu, true); } catch (e) { }
+    }
+  }
+  function menuDocs() {
+    const out = [];
+    try {
+      const W = menuWin(), d = W.document;
+      out.push([W, d]);
+      for (const f of d.querySelectorAll('iframe')) {
+        try { const cd = f.contentDocument; if (cd) out.push([f.contentWindow, cd]); } catch (e) { /* 跨域就跳过 */ }
+      }
+    } catch (e) { }
+    return out;
   }
   function onMenuOutside(e) { if (MENU_DOM && !MENU_DOM.contains(e.target)) closeMenu(); }
   function onMenuKey(e) { if (e.key === 'Escape') { e.stopPropagation(); closeMenu(); } }
@@ -1108,9 +1128,11 @@
     if (r.right > W.innerWidth - 4) MENU_DOM.style.left = Math.round(Math.max(4, W.innerWidth - r.width - 6)) + 'px';
     if (r.bottom > W.innerHeight - 4) MENU_DOM.style.top = Math.round(Math.max(4, W.innerHeight - r.height - 6)) + 'px';
     setTimeout(() => {
-      d.addEventListener('mousedown', onMenuOutside, true);
-      d.addEventListener('keydown', onMenuKey, true);
-      W.addEventListener('resize', closeMenu, true);
+      for (const [w, d] of menuDocs()) {
+        d.addEventListener('mousedown', onMenuOutside, true);
+        d.addEventListener('keydown', onMenuKey, true);
+        try { w.addEventListener('resize', closeMenu, true); } catch (e) { }
+      }
     }, 0);
   }
 
