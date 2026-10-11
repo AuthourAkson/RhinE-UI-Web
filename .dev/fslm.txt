@@ -1,0 +1,7 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/fs-lyrics-mili.mjs
+Mili 下标: 3  路径: D:\AgentTestLab\RhinE-UI\musiclab\military-radio-communication-222904.mp3
+播放中: {"播放":true,"时长":38,"曲目":"?"}
+主题怎么找歌词（同目录同名 .lrc）: （没有 now playing）
+歌词状态: {"state":"","key":""}
+已存 .dev/fs-lyrics-mili.png
+[chrome-run] 已关闭无头 Chrome

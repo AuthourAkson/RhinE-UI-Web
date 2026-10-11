@@ -108,6 +108,7 @@ const HOST_I18N = {
     'Choosing a folder was cancelled': '已取消选择目录',
     'Scanning the folder…': '正在扫描目录…',
     'Scan finished: {0} audio files': '扫描完成：{0} 个音频文件',
+    'Scan finished: {0} audio files, {1} text sidecars': '扫描完成：{0} 个音频文件、{1} 个同名文本（歌词等）',
     'This browser has no File System Access API — use Chrome or Edge': '此浏览器不支持 File System Access API，请用 Chrome/Edge',
     'Settings restored to defaults, reloading…': '设置已恢复默认，正在重新载入…',
     'Cache cleared: {0} entries (waveforms are decoded again next time the Signal view opens)': '已清空缓存：{0} 条（波形会在下次进入 SIGNAL 视图时重新解码）',
@@ -616,17 +617,29 @@ async function loadFsLibrary() {
   catch (e) { log(ht('Choosing a folder was cancelled')); return; }
   const rootName = dir.name || 'Music';
   const files = [];
+  // ⚠️⚠️ 必须把**同名的文本文件**也读进来（.lrc 歌词 / .srt 字幕 / .txt 等）。
+  //    File System Access 拿不到真实绝对路径（浏览器不给），只能把路径拼成 `D:\<目录名>\…`，
+  //    而清单的键是仓库相对路径 —— 于是"选了 D:\…\musiclab，Mili 那首的 .lrc 就在同目录同文件名，
+  //    主题却问不到"。实测用户报的正是这个：手动选目录 → 歌词不加载；
+  //    而本地 ?demo=1 走开发服务器（传真实绝对路径）→ 歌词正常，看起来"很奇怪"。
+  //    这里把文本读进内存，经 window.__RHINE_FS__ 交给 shim 的同步 IsFile/ReadTextFile 查。
+  const TEXT_SIDECAR = /\.(lrc|srt|txt|md)$/i;
+  const fsText = new Map(), fsFiles = new Set();
   const walk = async (handle, prefix) => {
     for await (const [name, ent] of handle.entries()) {
       const p = prefix + '\\' + name;
-      if (ent.kind === 'directory') await walk(ent, p);
-      else if (/\.(mp3|flac|m4a|ogg|oga|opus|wav|aac)$/i.test(name)) files.push({ path: 'D:\\' + rootName + p, file: await ent.getFile() });
+      if (ent.kind === 'directory') { await walk(ent, p); continue; }
+      const abs = 'D:\\' + rootName + p;
+      fsFiles.add(abs);
+      if (/\.(mp3|flac|m4a|ogg|oga|opus|wav|aac)$/i.test(name)) files.push({ path: abs, file: await ent.getFile() });
+      else if (TEXT_SIDECAR.test(name)) { try { fsText.set(abs, await (await ent.getFile()).text()); } catch (e) { } }
     }
   };
   log(ht('Scanning the folder…'));
   await walk(dir, '');
   LIB.files = files; LIB.source = 'fs';
-  log(ht('Scan finished: {0} audio files', files.length));
+  window.__RHINE_FS__ = { text: fsText, files: fsFiles, root: 'D:\\' + rootName };
+  log(ht('Scan finished: {0} audio files, {1} text sidecars', files.length, fsText.size));
   if (files.length) libraryLoaded(files.length);
 }
 
@@ -926,10 +939,25 @@ function prefStats() {
 function prefOpen() {
   const s = prefStats();
   const wrap = document.createElement('div');
-  wrap.style.cssText = `position:fixed;inset:0;z-index:2147483000;background:rgba(0,0,0,.58);display:flex;align-items:center;justify-content:center;font:13px/1.7 ${PREF.font};color:${PREF.fg}`;
+  wrap.id = 'rhine-prefs';
+  // color-scheme: dark 让浏览器把**原生**滚动条也画成深色（否则是白底灰块，在这套界面里很突兀）；
+  // 下面再用 ::-webkit-scrollbar 把它收到的主题色，两者一起才彻底。
+  wrap.style.cssText = `position:fixed;inset:0;z-index:2147483000;background:rgba(0,0,0,.58);display:flex;align-items:center;justify-content:center;font:13px/1.7 ${PREF.font};color:${PREF.fg};color-scheme:dark`;
   const box = document.createElement('div');
-  box.style.cssText = `width:660px;max-width:92vw;max-height:88vh;overflow:auto;background:${PREF.bg};border:1px solid ${PREF.hair};box-shadow:0 26px 90px rgba(0,0,0,.72)`;
+  box.style.cssText = `width:660px;max-width:92vw;max-height:88vh;overflow:auto;background:${PREF.bg};border:1px solid ${PREF.hair};box-shadow:0 26px 90px rgba(0,0,0,.72);scrollbar-gutter:stable`;
   wrap.appendChild(box);
+  // ⚠️ 这个对话框画在**顶层文档**里，拿不到主题面板（iframe）里的样式表，所以滚动条要在这里单独写。
+  //    用户实测："内容多时右侧滑标白底灰块太突兀"。样式表挂一次就够（重复开不叠加）。
+  const sbStyle = document.createElement('style');
+  sbStyle.id = 'rhine-prefs-sb';
+  sbStyle.textContent = `
+    #rhine-prefs ::-webkit-scrollbar{width:10px;height:10px}
+    #rhine-prefs ::-webkit-scrollbar-track{background:transparent}
+    #rhine-prefs ::-webkit-scrollbar-corner{background:transparent}
+    #rhine-prefs ::-webkit-scrollbar-thumb{background:rgba(242,241,236,.22);border:2px solid ${PREF.bg};border-radius:6px}
+    #rhine-prefs ::-webkit-scrollbar-thumb:hover{background:${PREF.accent}}
+  `;
+  if (!document.getElementById('rhine-prefs-sb')) document.head.appendChild(sbStyle);
 
   // 标题栏
   const head = document.createElement('div');

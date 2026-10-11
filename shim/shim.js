@@ -855,12 +855,46 @@
   let FILE_SET = null;
   const fileSet = () => (FILE_SET || (FILE_SET = new Set(MANIFEST.files || [])));
 
+  /**
+   * 用户用 File System Access 选的本机目录（app.js 的 loadFsLibrary）。
+   *
+   * 为什么需要这一层：浏览器**拿不到真实绝对路径**，宿主只能把路径拼成 `D:\<目录名>\…`，
+   * 而清单的键是"仓库相对路径"（musiclab/…）→ 永远命不中。
+   * 症状就是用户实测的那个：选了 D:\AgentTestLab\RhinE-UI\musiclab，
+   * Mili 那首的 .lrc 明明就在同一目录、文件名也同名，主题却问不到（utils.IsFile → false）。
+   *
+   * 宿主扫目录时把同名文本（.lrc/.srt/.txt/…）一起读进来，放到 parent.__RHINE_FS__：
+   *   { text: Map<拼出来的路径, 文本>, files: Set<拼出来的路径> }
+   * 同源 iframe 直接同步读父窗口属性（和 parent.__RHINE_CMD__ 同一路子），所以主题那些
+   * **同步**调用（IsFile / ReadTextFile）能照常工作。
+   */
+  const fsOverlay = () => {
+    try {
+      const p = window.parent;
+      return (p && p !== window && p.__RHINE_FS__) || null;
+    } catch (e) { return null; }
+  };
+  /** 主题可能用反斜杠或正斜杠两种写法问同一个文件，两种键都试一遍 */
+  const fsVariants = (p) => [String(p), String(p).replace(/\//g, '\\'), String(p).replace(/\\/g, '/')];
+  const fsHas = (ov, p) => {
+    if (!ov || !ov.files) return false;
+    for (const k of fsVariants(p)) { try { if (ov.files.has(k)) return true; } catch (e) { } }
+    return false;
+  };
+  const fsGet = (ov, p) => {
+    if (!ov || !ov.text) return undefined;
+    for (const k of fsVariants(p)) { try { if (ov.text.has(k)) return ov.text.get(k); } catch (e) { } }
+    return undefined;
+  };
+
   const utils = {
     // 主题会把设置写进 <profile>\audio-archive-settings.json（utils.WriteTextFile → localStorage 覆盖层），
     // 所以 IsFile / ReadTextFile 必须也认这一层，否则设置读不回来（保真度问题）
     __fileKey: (p) => 'rhine:file:' + norm(p),
     IsFile: (p) => {
       const k = norm(p);
+      // 用户自己选的目录（File System Access）：路径是拼出来的，清单里不会有 —— 查宿主准备的覆盖层
+      if (fsHas(fsOverlay(), p)) return true;
       if (Object.prototype.hasOwnProperty.call(MANIFEST.text, k)) return true;
       if (Object.prototype.hasOwnProperty.call(MANIFEST.images, k)) return true;
       // ⚠️ 音频这类二进制文件只在 MANIFEST.files（完整文件清单）里，不在 text/images 里。
@@ -875,6 +909,9 @@
     ReadTextFile: (p) => {
       const k = norm(p);
       if (isCachePath(k)) return CACHE_FILES.has(k) ? CACHE_FILES.get(k) : '';
+      // 用户自己选的目录里的同名文本（.lrc 歌词等）：宿主扫目录时已读进来，优先于仓库默认文件
+      const over = fsGet(fsOverlay(), p);
+      if (over !== undefined) return over;
       // ⚠️⚠️ 顺序很重要：**先看 localStorage 覆盖层，再看仓库里的默认文件**。
       //    之前反了（先返回 MANIFEST.text），而 audio-archive-settings.json 这份默认文件
       //    本身就在仓库里 → 于是用户保存过的设置**永远读不回来**，读到的始终是原始默认值。

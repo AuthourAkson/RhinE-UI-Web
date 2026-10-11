@@ -1,0 +1,16 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/fs-lyrics-check.mjs
+=== ① 首选项对话框的滚动条 ===
+对话框: {"colorScheme":"dark","有滚动条样式表":true,"可滚动":true}
+已存 .dev/prefs-scrollbar.png（滚动条 6 倍放大）
+
+=== ② 假目录选择器 → 同名 .lrc 是否可识别 ===
+假 picker 就绪
+扫描: 完成
+宿主覆盖层: {"files":10,"text":2,"键样例":["D:\\musiclab\\Mili - world.execute (me) ;.lrc","D:\\musiclab\\world.execute(me)-timeline.lrc"]}
+主题侧 IsFile: true
+主题侧 ReadTextFile 字节数: 3849
+歌词首行: [ar:Mili]
+Mili 在曲库里的下标: 3
+歌词模块状态: {"state":"","key":"","正在播放":true,"标题":"?"}
+已存 .dev/fs-lyrics.png
+[chrome-run] 已关闭无头 Chrome
