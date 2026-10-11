@@ -166,14 +166,16 @@
       },
       CalcTextWidth(text, font, fromZero) {
         ctx.save(); ctx.font = fontCssOf(font); const m = ctx.measureText(String(text)); ctx.restore();
-        // ⚠️ fromZero 要的是**步进宽度（advance）**，不是墨迹外框。
-        //    主题的带字距标签是逐字形画的（lib/text.js:53-62）：
-        //        adv = gr.CalcTextWidth(ch, f, true)   →   cx += adv + gap
-        //    这里曾经返回 actualBoundingBoxLeft + actualBoundingBoxRight（墨迹实宽），
-        //    等宽字体里每个字的步进是一样的，但"冒号"的墨迹只有 2~3px（步进 9px），
-        //    于是画笔推进不足，**右上角时钟的冒号和数字叠在一起**（用户实测）。
-        //    archive.js 用同一标志算等宽数字格（CalcTextWidth("0", f, true)）也要步进。
-        return m.width || 0;
+        // ⚠️ fromZero=true 用来算**逐字形的框宽**（lib/text.js:53-62 把每个字形画进
+        //    adv[i] + dp(4) 的框，位图总宽 = Σ步进 + 字距）。这里必须取"步进"与"墨迹右缘"
+        //    的较大者：
+        //      · 取步进 → 等宽字体的窄字形（冒号等）推进正确，时钟不会挤在一起；
+        //      · 取墨迹右缘 → 斜体/合成斜体（GeistMono 没有 italic 面，浏览器会把正体倾斜）
+        //        的墨迹会超出步进，只按步进算宽会让**最后一个字形**超出位图被裁掉
+        //        （实测：UNKNOWN 末字超出 1.7px、开场 SESSION AUTHORIZED 超出 3.0px，
+        //         用户看到"最后一个字母被遮住一小部分"）。
+        //    两者取大既保住推进、又保证框容得下墨迹。
+        return Math.max(m.width || 0, m.actualBoundingBoxRight || 0);
       },
       CalcTextHeight(text, font) {
         ctx.save(); ctx.font = font.Css; const m = ctx.measureText(String(text)); ctx.restore();

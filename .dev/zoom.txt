@@ -1,0 +1,8 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/zoom-check.mjs
+语言: en  分组名: UNKNOWN
+裁剪区域（页面坐标）: {"x":741,"y":711,"width":380,"height":70,"scale":6}
+已存 .dev/zoom-unknown-en.png（放大 6 倍）
+
+触发开场动画…
+已连拍 22 帧（.dev/boot-NN.png）
+[chrome-run] 已关闭无头 Chrome
