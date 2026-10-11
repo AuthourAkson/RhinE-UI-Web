@@ -1,0 +1,4 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/zh-shot.mjs
+各面板 UI_LANG: {"header":"zh-CN","stage":"zh-CN","transport":"zh-CN","manager":"zh-CN","head":"zh-CN","card":"zh-CN"}
+已存 .dev/zh-consistent.png
+[chrome-run] 已关闭无头 Chrome

@@ -786,7 +786,22 @@
     WriteTextFile: (p, s) => {
       const k = norm(p);
       if (isCachePath(k)) { CACHE_FILES.set(k, s); return true; }
-      try { localStorage.setItem('rhine:file:' + k, s); } catch (e) { }
+      // ⚠️ 主题的设置是"读整份 → 改一个键 → 覆盖整份写回"（lib/settings.js:26-32），而多个面板
+      //    会同时这么干 → 后写的把别人刚加的键覆盖掉。实测丢过一次 uiLang：文件里没有它之后，
+      //    getSetting 会回退到 window.GetProperty（**每个面板各自一份**），于是出现
+      //    "header 面板英文、其它面板中文"这种同一界面语言不一致的怪象。
+      //    这里对设置文件做一次按键合并（主题只会设键、从不删键，所以合并是安全的）。
+      let out = s;
+      if (/audio-archive-settings\.json$/.test(k)) {
+        try {
+          const old = JSON.parse(localStorage.getItem('rhine:file:' + k) || '{}');
+          const neu = JSON.parse(s);
+          if (old && neu && typeof old === 'object' && typeof neu === 'object' && !Array.isArray(neu)) {
+            out = JSON.stringify(Object.assign({}, old, neu), null, 1);
+          }
+        } catch (e) { /* 不是 JSON 就原样写 */ }
+      }
+      try { localStorage.setItem('rhine:file:' + k, out); } catch (e) { }
       return true;
     },
     CreateFolder: () => true,
@@ -967,7 +982,14 @@
   let MENU_PENDING = null;   // 已点选、等待重放的菜单 id
   let MENU_INPUT = null;     // 打开当前菜单时的那次输入
   let MENU_DOM = null;       // 正在显示的菜单根节点
+  let SUB_DOM = null, SUB_TIMER = null;   // 当前展开的子菜单 + 延迟关闭定时器（整棵菜单树共用）
   const DISPATCH = { ev: null, evRet: null };   // 由 bindEvents() 填上
+
+  // 子菜单**延迟**关闭：指针从父行移到子菜单要跨过几像素缝隙，立刻关会"还没碰到就消失"
+  //（用户实测）。延迟期间指针进入子菜单就取消关闭；定时器是全树共用的，因此跨层级也成立。
+  function subCancel() { if (SUB_TIMER) { clearTimeout(SUB_TIMER); SUB_TIMER = null; } }
+  function subCloseNow() { subCancel(); if (SUB_DOM) { SUB_DOM.remove(); SUB_DOM = null; } }
+  function subCloseSoon() { subCancel(); SUB_TIMER = setTimeout(subCloseNow, 260); }
 
   const MENU_CSS = 'position:fixed;z-index:2147483000;min-width:190px;max-height:82vh;overflow:auto;padding:4px 0;' +
     'background:#1b1c18;color:#f2f1ec;border:1px solid rgba(242,241,236,.22);' +
@@ -987,6 +1009,7 @@
   };
 
   function closeMenu() {
+    subCloseNow();
     if (MENU_DOM) { MENU_DOM.remove(); MENU_DOM = null; }
     const d = menuDoc();
     d.removeEventListener('mousedown', onMenuOutside, true);
@@ -1010,7 +1033,14 @@
     const box = document.createElement('div');
     box.style.cssText = MENU_CSS;
     box.__popup = popup;                 // 诊断用：从 DOM 就能查到这一层菜单的条目
-    for (const it of popup.__items) {
+    let levelSub = null;                 // 本层当前展开的子菜单（同层互斥；父层的子菜单不受影响）
+    // 先过滤掉不显示的空子菜单，并清掉"开头/结尾/连续"的分隔线
+    //（主题在原生菜单后面加了一条分隔线；那几项被隐藏后它会变成开头的孤线）
+    const items = popup.__items.filter((it) => !(it.k === 'sub' && (!it.menu || !it.menu.__items || !it.menu.__items.length)));
+    while (items.length && items[0].k === 'sep') items.shift();
+    while (items.length && items[items.length - 1].k === 'sep') items.pop();
+    const shown = items.filter((it, i) => !(it.k === 'sep' && items[i - 1] && items[i - 1].k === 'sep'));
+    for (const it of shown) {
       if (it.k === 'sep') {
         const s = document.createElement('div');
         s.style.cssText = 'height:1px;margin:4px 10px;background:rgba(242,241,236,.18)';
@@ -1034,12 +1064,15 @@
       if (it.k === 'sub') { const a = document.createElement('span'); a.textContent = '▸'; a.style.cssText = 'color:rgba(242,241,236,.6)'; row.appendChild(a); }
       let sub = null;
       const openSub = () => {
-        if (sub) sub.remove();
+        if (levelSub) { levelSub.remove(); levelSub = null; }   // 同层只留一个
         sub = null;
         if (it.k !== 'sub') return;
         const W = menuWin();
         sub = menuNode(it.menu);
         sub.style.display = 'block';
+        // 指针进入子菜单就取消"延迟关闭"（跨层也生效，定时器是全树共用的）
+        sub.addEventListener('mouseenter', subCancel);
+        sub.addEventListener('mouseleave', subCloseSoon);
         const r = row.getBoundingClientRect();
         sub.style.left = Math.round(r.right - 4) + 'px';
         sub.style.top = Math.round(r.top - 5) + 'px';
@@ -1047,13 +1080,14 @@
         const sr = sub.getBoundingClientRect();
         if (sr.right > W.innerWidth - 4) sub.style.left = Math.round(Math.max(4, r.left - sr.width + 4)) + 'px';
         if (sr.bottom > W.innerHeight - 4) sub.style.top = Math.round(Math.max(4, r.top - sr.height + 22)) + 'px';   // 底部放不下就往上顶
+        levelSub = sub; SUB_DOM = sub;
       };
-      row.addEventListener('mouseenter', () => { row.style.background = 'rgba(242,241,236,.12)'; openSub(); });
-      row.addEventListener('mouseleave', () => { row.style.background = ''; if (sub) { sub.remove(); sub = null; } });
+      row.addEventListener('mouseenter', () => { subCancel(); row.style.background = 'rgba(242,241,236,.12)'; openSub(); });
+      row.addEventListener('mouseleave', () => { row.style.background = ''; if (it.k === 'sub') subCloseSoon(); });
       // 子菜单行：点击也展开（悬停在某些输入路径下不会触发 mouseenter，点一下更稳）
       row.addEventListener('click', (e) => {
         e.stopPropagation();
-        if (it.k === 'sub') { openSub(); return; }
+        if (it.k === 'sub') { subCancel(); openSub(); return; }
         if (it.disabled) return;
         menuPick(it.id);
       });

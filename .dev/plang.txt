@@ -1,0 +1,19 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/panel-lang.mjs
+header     {"设置里的uiLang":"en","SYSTEM_LANG":"zh-CN","UI_LANG":"en","中文表":true,"抽样":"ARCHIVE"}
+stage      {"设置里的uiLang":"(无)","SYSTEM_LANG":"zh-CN","UI_LANG":"zh-CN","中文表":true,"抽样":"档案"}
+transport  {"设置里的uiLang":"(无)","SYSTEM_LANG":"zh-CN","UI_LANG":"zh-CN","中文表":true,"抽样":"档案"}
+manager    {"设置里的uiLang":"(无)","SYSTEM_LANG":"zh-CN","UI_LANG":"zh-CN","中文表":true,"抽样":"档案"}
+root       {"设置里的uiLang":"(无)","SYSTEM_LANG":"zh-CN","UI_LANG":"zh-CN","中文表":true,"抽样":"档案"}
+
+设置文件内容（前 200 字）:
+{
+ "scheme": "archive",
+ "mode": "dark",
+ "view": "archive",
+ "archiveLayout": "array",
+ "archiveSort": "artist",
+ "archiveGroup": "genre",
+ "caseSkin": "white",
+ "archiveUnit": "albums",
+ "archiveSel
+[chrome-run] 已关闭无头 Chrome

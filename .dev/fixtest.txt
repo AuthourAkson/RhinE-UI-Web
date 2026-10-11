@@ -1,0 +1,12 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/menu-fix-test.mjs
+① 顶层菜单（应只剩 Audio Archive，不再有 File/Edit… 空菜单）:
+    | Audio Archive▸
+
+② 悬停 Audio Archive → 子菜单条目数: 28 （本层+子层）
+   末尾 5 项: Archive floor▸ | Language · 语言 · 言語▸ |  | Check for updates…RhinE | ●Check for updates daily
+
+③ 从 Audio Archive 行走向 Language 行（逐点，模拟真实移动）…
+   走完后语言子菜单: ["●English","简体中文","日本語"]
+   移到子菜单内部（左移 60px）后仍在: ["●English","简体中文","日本語"]
+   已存 .dev/menu-fixed.png
+[chrome-run] 已关闭无头 Chrome

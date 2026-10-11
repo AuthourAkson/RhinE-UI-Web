@@ -1,0 +1,22 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/store-probe.mjs
+=== 所有 rhine:file: 里含 settings 的键 ===
+rhine:file:audio-archive-settings.json → {
+ "scheme": "archive",
+ "mode": "dark",
+ "view": "archive",
+ "archiveLayout": "array",
+ "archiveSort": "artist",
+ "archiveGroup": "genre",
+ "caseSkin": "white",
+ "archiveUnit": "albums",
+ "archiveSel": "{\"key\":\"|d:\\\\agenttestlab\\\\rhine-ui\\\\musiclab\"
+
+=== 所有 rhine:prop: 里含 uiLang 的键 ===
+rhine:prop:header:uiLang = "en"
+
+=== 设置文件里有没有 uiLang ===
+有 uiLang: undefined    全部键: scheme,mode,view,archiveLayout,archiveSort,archiveGroup,caseSkin,archiveUnit,archiveSel,seed
+
+=== 仓库默认设置文件里的 uiLang ===
+拿不到 manifest
+[chrome-run] 已关闭无头 Chrome

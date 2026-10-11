@@ -1,0 +1,18 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/lang-consist.mjs
+清理陈旧面板属性: 删除 1 个: rhine:prop:header:uiLang
+
+=== 各面板语言（刷新后应全部一致）===
+{
+ "header": "zh-CN/档案",
+ "stage": "zh-CN/档案",
+ "transport": "zh-CN/档案",
+ "manager": "zh-CN/档案",
+ "head": "zh-CN/档案",
+ "card": "zh-CN/档案"
+}
+
+切换到 English … 点击 (1605,590)
+  设置文件里的 uiLang: "en"
+  各面板: {"header":"无/无","stage":"无/无","transport":"无/无","manager":"无/无","head":"无/无","card":"无/无"}
+没找到 Audio Archive 项: []
+[chrome-run] 已关闭无头 Chrome
