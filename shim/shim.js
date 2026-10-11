@@ -544,6 +544,11 @@
     get IsPlaying() { return !!SHARED().transport.playing; },
     get IsPaused() { return !!SHARED().transport.paused; },
     get PlaybackTime() { return SHARED().transport.time || 0; },
+    // ⚠️ 主题用**赋值**来跳转（transport.js:361 进度条释放 `fb.PlaybackTime = drag.value`，
+    //    还有滚轮 ±5s、点歌词行、点 signal 轨迹、方向键，共 5 处）。
+    //    只给 getter 会在严格模式下抛 TypeError，而抛出的那行正好在 `drag = null` 之前
+    //    → 拖动状态永远结束不了：游标一直跟着鼠标跑、点击进度条也不跳转（用户实测症状）。
+    set PlaybackTime(v) { HOST.command('seek:' + (Number(v) || 0)); },
     get PlaybackLength() { return SHARED().transport.length || 0; },
     get Volume() { return SHARED().transport.volume != null ? SHARED().transport.volume : -10; },
     // 主题的音量条是**赋值**（transport.js: fb.Volume = pos2vol(...)），只给 getter 会在严格模式下抛错

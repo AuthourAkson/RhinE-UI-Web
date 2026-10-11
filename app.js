@@ -578,6 +578,18 @@ window.__RHINE_CMD__ = (cmd) => {
   }
   if (cmd === 'vol-up') { window.__RHINE_CMD__(`volume:${Math.min(0, (SHARED.transport.volume || -10) + 1)}`); return; }
   if (cmd === 'vol-down') { window.__RHINE_CMD__(`volume:${Math.max(-100, (SHARED.transport.volume || -10) - 1)}`); return; }
+  // 跳转：主题的进度条/歌词行/信号轨迹/方向键都落到这里（fb.PlaybackTime = …）
+  if (cmd.startsWith('seek:')) {
+    const t = Number(cmd.slice(5));
+    const len = (audio.duration || SHARED.transport.length || 0);
+    if (Number.isFinite(t) && len > 0) {
+      audio.currentTime = Math.max(0, Math.min(t, Math.max(0, len - 0.05)));
+      SHARED.transport.time = audio.currentTime;
+      pushShared();
+      emit('on_playback_seek');           // 歌词/信号视图据此重新对齐（stage.js:86）
+    }
+    return;
+  }
   if (cmd.startsWith('play:')) { const [, p, i] = cmd.split(':'); LIB.activePlaylist = Number(p); LIB.playlists[Number(p)] = LIB.playlists[Number(p)] || { name: 'Playlist', items: [] }; playIndex((LIB.playlists[Number(p)].items || [])[Number(i)] ?? Number(i)); return; }
   if (cmd.startsWith('focus:')) {
     const [, p, i] = cmd.split(':');
