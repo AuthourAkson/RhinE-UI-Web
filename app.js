@@ -568,6 +568,7 @@ window.__RHINE_CMD__ = (cmd) => {
     return;
   }
   if (cmd === 'add-music') { loadFsLibrary(); return; }
+  if (cmd === 'preferences') { prefToggle(); return true; }
   // 播放与播放列表（主题的 fb.PlayOrPause / plman.ActivePlaylist = … 都落到这里）
   if (cmd === 'toggle') { if (audio.paused) { if (LIB.playing.item < 0 && LIB.tracks.length) playIndex(0); else audio.play().catch(() => { }); } else audio.pause(); return; }
   if (cmd === 'play') { audio.play().catch(() => { }); return; }
@@ -730,6 +731,156 @@ window.__RHINE_CMD__ = (cmd) => {
   console.log('宿主命令（暂未实现）:', cmd);
 };
 
-// shim 里 HOST.other / HOST.command 的转发入口（iframe 通过 parent.__RHINE_BUS__ 调用）
+/* ---------------------------------------------------------------- 网页版首选项 --
+ * 原版右上角的 PREFERENCES 调 fb.ShowPreferences() —— foobar2000 的**原生**设置对话框
+ * （Media Library 文件夹、Display › Columns UI › Colours and fonts、Playback / Output / DSP…）。
+ * 浏览器里没有 foobar2000，所以这里做一个"网页版对应物"：只放**端口特有、主题 MENU 里
+ * 放不下**的东西 —— 曲库来源、缓存、重置、快捷键、关于；主题自己的设置仍然在 MENU 里。
+ */
+let prefEl = null;
+const PREF = {
+  bg: '#1b1c18', fg: '#f2f1ec', soft: 'rgba(242,241,236,.62)', hair: 'rgba(242,241,236,.20)',
+  accent: '#ff7a1a', font: '"Geist Mono","Microsoft YaHei UI",monospace',
+};
+const prefClose = () => { if (prefEl) { prefEl.remove(); prefEl = null; } };
+const prefToggle = () => (prefEl ? prefClose() : prefOpen());
+
+function prefStats() {
+  const tracks = LIB.tracks || [];
+  const albums = new Set(tracks.map((t) => (t.album || '') + '|' + String(t.path || '').replace(/[^\\/]*$/, ''))).size;
+  const size = tracks.reduce((n, t) => n + (t.size || 0), 0);
+  const dur = tracks.reduce((n, t) => n + (t.length || 0), 0);
+  const hh = Math.floor(dur / 3600), mm = Math.floor((dur % 3600) / 60), ss = Math.round(dur % 60);
+  return {
+    files: tracks.length, albums,
+    size: size ? (size / 1048576).toFixed(1) + ' MB' : '—',
+    dur: dur ? (hh ? hh + ':' : '') + String(mm).padStart(2, '0') + ':' + String(ss).padStart(2, '0') : '—',
+    source: location.search.includes('demo=1') ? '演示曲库（?demo=1）'
+      : (LIB.files && LIB.files.length ? '本地文件夹（File System Access）' : '未载入'),
+  };
+}
+
+function prefOpen() {
+  const s = prefStats();
+  const wrap = document.createElement('div');
+  wrap.style.cssText = `position:fixed;inset:0;z-index:2147483000;background:rgba(0,0,0,.58);display:flex;align-items:center;justify-content:center;font:13px/1.7 ${PREF.font};color:${PREF.fg}`;
+  const box = document.createElement('div');
+  box.style.cssText = `width:660px;max-width:92vw;max-height:88vh;overflow:auto;background:${PREF.bg};border:1px solid ${PREF.hair};box-shadow:0 26px 90px rgba(0,0,0,.72)`;
+  wrap.appendChild(box);
+
+  // 标题栏
+  const head = document.createElement('div');
+  head.style.cssText = `display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid ${PREF.hair}`;
+  head.innerHTML = `<span style="width:6px;height:6px;background:${PREF.fg};display:inline-block"></span>`
+    + `<span style="letter-spacing:.14em">PREFERENCES · 网页版首选项</span>`
+    + `<span style="flex:1"></span><span style="color:${PREF.soft};font-size:11px">原版这里是 foobar2000 的原生设置</span>`;
+  const x = document.createElement('button');
+  x.textContent = '✕';
+  x.style.cssText = `margin-left:12px;background:none;border:1px solid ${PREF.hair};color:${PREF.fg};font:12px ${PREF.font};padding:2px 8px;cursor:pointer`;
+  x.onclick = prefClose;
+  head.appendChild(x);
+  box.appendChild(head);
+
+  const body = document.createElement('div');
+  body.style.cssText = 'padding:6px 16px 18px';
+  box.appendChild(body);
+
+  const section = (title) => {
+    const t = document.createElement('div');
+    t.style.cssText = `margin:16px 0 6px;letter-spacing:.14em;color:${PREF.soft};font-size:11px;border-bottom:1px solid ${PREF.hair};padding-bottom:4px`;
+    t.textContent = title;
+    body.appendChild(t);
+    return body;
+  };
+  const line = (k, v) => {
+    const d = document.createElement('div');
+    d.style.cssText = 'display:flex;gap:12px;padding:1px 0';
+    d.innerHTML = `<span style="flex:0 0 132px;color:${PREF.soft}">${k}</span><span style="flex:1">${v}</span>`;
+    body.appendChild(d);
+  };
+  const buttons = (list) => {
+    const d = document.createElement('div');
+    d.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;margin-top:10px';
+    for (const [text, fn, primary] of list) {
+      const b = document.createElement('button');
+      b.textContent = text;
+      b.style.cssText = `background:${primary ? PREF.fg : 'transparent'};color:${primary ? PREF.bg : PREF.fg};`
+        + `border:1px solid ${primary ? PREF.fg : PREF.hair};font:12px ${PREF.font};padding:5px 12px;cursor:pointer`;
+      b.onmouseenter = () => { b.style.background = primary ? PREF.accent : 'rgba(242,241,236,.12)'; b.style.color = primary ? PREF.bg : PREF.fg; };
+      b.onmouseleave = () => { b.style.background = primary ? PREF.fg : 'transparent'; b.style.color = primary ? PREF.bg : PREF.fg; };
+      b.onclick = fn;
+      d.appendChild(b);
+    }
+    body.appendChild(d);
+    return d;
+  };
+
+  // ---- 曲库 ----
+  section('曲库 / MEDIA LIBRARY');
+  line('来源', s.source);
+  line('曲目 / 专辑', `${s.files} 首 / ${s.albums} 张`);
+  line('总时长 / 体积', `${s.dur} / ${s.size}`);
+  buttons([
+    ['选音乐文件夹…', () => { prefClose(); loadFsLibrary(); }, true],
+    ['重新扫描', () => { log('重新扫描曲库…'); location.reload(); }],
+    ['载入演示曲库', () => { location.href = location.pathname + '?demo=1'; }],
+  ]);
+  line('', `<span style="color:${PREF.soft};font-size:11px">说明：本地文件夹的目录句柄持久化（IndexedDB）还没做，重扫需要重新选一次目录。</span>`);
+
+  // ---- 缓存与设置 ----
+  section('缓存与设置 / CACHE');
+  line('波形缓存', '解码后的整轨波形存在各面板内存里（配合「清空」重算）');
+  buttons([
+    ['清空波形 / 封面缓存', () => {
+      let n = 0;
+      for (const p of PANELS) { const w = p.__frame && p.__frame.contentWindow; try { if (w && w.__rhine && w.__rhine.clearCache) n += w.__rhine.clearCache() || 0; } catch (e) { } }
+      log(`已清空缓存：${n} 条（波形会在下次进入 SIGNAL 视图时重新解码）`);
+      prefClose();
+    }],
+    ['恢复默认设置…', () => {
+      if (!confirm('清空全部设置（配色方案 / 视图 / 皮肤 / 界面语言…）并重新载入？')) return;
+      try {
+        const drop = [];
+        for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && (k.indexOf('rhine:file:') === 0 || k.indexOf('rhine:prop:') === 0)) drop.push(k); }
+        drop.forEach((k) => localStorage.removeItem(k));
+      } catch (e) { }
+      log('设置已恢复默认，正在重新载入…');
+      location.reload();
+    }],
+  ]);
+
+  // ---- 快捷键 ----
+  section('快捷键 / SHORTCUTS');
+  for (const [k, v] of [['1 – 5', '切换五个视图（档案 / 播放列表 / 歌词 / 信号 / 外观）'], ['T', '浅色 / 深色'], ['P', '播放列表预设 Album ⇄ Index'], ['B', '播放开场影片'], ['S', '整库随机播放'], ['R', '档案视图里随机抽取'], ['I', '查看 / 检查当前专辑'], ['/', '搜索（档案视图里就地过滤，其它视图建 Search 列表）'], ['Esc', '退出搜索 / 关闭浮层'], ['空格', '播放 / 暂停']]) line(k, v);
+
+  // ---- 关于 ----
+  section('关于 / ABOUT');
+  const ver = (manifest && manifest.text && String(manifest.text['themes/audio-archive/VERSION'] || '').trim()) || '—';
+  line('主题版本', `RhinE ${ver}`);
+  line('移植', 'RhinE-UI · 主题 JS 与原版 1.4.0 逐字节一致');
+  line('清单构建于', (manifest && manifest.built) ? String(manifest.built).replace('T', ' ').slice(0, 19) : '—');
+  line('面板', `${PANELS.length} 个 iframe 面板 · 清单 ${manifest ? manifest.files.length : '?'} 个文件`);
+  line('视口 / 缩放', `${innerWidth}×${innerHeight} CSS @ dpr ${devicePixelRatio}`);
+  line('浏览器', (navigator.userAgent.match(/(Chrome|Edg|Firefox|Safari)\/[\d.]+/) || [navigator.userAgent.slice(0, 40)])[0]);
+  line('渲染', `Canvas 2D · 字体 ${document.fonts && document.fonts.check('12px "Geist Mono"') ? '已加载' : '未加载'}`);
+
+  wrap.addEventListener('mousedown', (e) => { if (e.target === wrap) prefClose(); });
+  // ⚠️ Esc 必须挂在**每个面板文档**上：整个 UI 都是 iframe，键盘焦点通常还在某个面板里，
+  //    只挂顶层文档的话按 Esc 关不掉（实测）。同源，所以能直接给它们的 document 加监听。
+  const onKey = (e) => {
+    if (e.key !== 'Escape') return;
+    e.stopPropagation(); e.preventDefault();
+    prefClose();
+    for (const p of PANELS) { try { p.__frame.contentWindow.document.removeEventListener('keydown', onKey, true); } catch (err) { } }
+    document.removeEventListener('keydown', onKey, true);
+  };
+  document.addEventListener('keydown', onKey, true);
+  for (const p of PANELS) { try { p.__frame.contentWindow.document.addEventListener('keydown', onKey, true); } catch (err) { } }
+  document.body.appendChild(wrap);
+  prefEl = wrap;
+  log('打开网页版首选项');
+}
+
+
 window.__RHINE_ONREADY__ = main;
 main().catch((e) => { console.error(e); log('启动失败：' + e.message); });

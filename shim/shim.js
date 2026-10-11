@@ -670,7 +670,10 @@
       if (pb) { HOST.command(pb[1].toLowerCase()); return true; }
       return false;
     },
-    ShowPreferences() { }, ShowPopupMessage() { }, ShowConsole() { },
+    // 原版是 fb.ShowPreferences()：打开 foobar2000 的原生设置对话框。
+    // 浏览器里没有 foobar2000，所以交给宿主弹一个"网页版首选项"（曲库来源 / 缓存 / 重置 /
+    // 快捷键 / 关于）——主题自己的设置在 MENU 里，这里只放端口特有的东西。
+    ShowPreferences() { HOST.command('preferences'); }, ShowPopupMessage() { }, ShowConsole() { },
     RegisterMainMenuCommand() { }, CreateMainMenuManager() { return mainMenuManager(); },
     // ⚠️ 主题拿它做 JSON.parse()，**必须返回 JSON 字符串**（返回数字会让 for…of 直接抛"不可迭代"，
     //    进而把 Light/Dark 切换整条链路打断）
@@ -1584,6 +1587,8 @@
     repaint() { dirty = true; schedule(); },
     size(w, h) { resize(w, h); },
     setShared(obj) { window.__RHINE_SHARED__ = obj; },
+    /** 宿主「首选项 › 清空缓存」用：波形等缓存都在本面板的内存表里 */
+    clearCache() { const n = CACHE_FILES.size; CACHE_FILES.clear(); return n; },
     /**
      * 切换浅色 / 深色。主题里"模式"其实是 Columns UI 的**活动配色集**：
      * tokens.js 的 refreshTokens() 读 window.GetColourCUI(3)（配色集背景色），

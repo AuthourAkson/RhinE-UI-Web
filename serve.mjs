@@ -140,9 +140,11 @@ function buildManifest() {
       if (ext === '.png' || ext === '.jpg' || ext === '.jpeg') {
         const dim = imageSize(full);
         if (dim) images[rel] = dim;
-      } else if (TEXT_EXT.has(ext) && size < 4 * 1024 * 1024) {
+      } else if ((TEXT_EXT.has(ext) && size < 4 * 1024 * 1024) || /^(VERSION|LICENSE|README)$/i.test(ent.name)) {
         // .fcl 是二进制，但主题会当文本读（latin1 解出可读字节），保持原样塞进去
-        text[rel] = ext === '.fcl' ? fs.readFileSync(full, 'latin1') : fs.readFileSync(full, 'utf8');
+        // VERSION/LICENSE 这类**没有扩展名**的文件也要收：主题的 themeVersion() 读主题根的 VERSION，
+        // 收不到就返回空串（菜单里"检查更新… RhinE"后面会空着）
+        text[rel] = (ext === '.fcl' || !ext) ? fs.readFileSync(full, 'latin1') : fs.readFileSync(full, 'utf8');
       }
     }
   };
