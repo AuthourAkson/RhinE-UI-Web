@@ -66,26 +66,8 @@ function makePanel(id, title, index) {
   return p;
 }
 
-/* 原生播放列表面板（Columns UI 的 playlist view）在网页版里是 DOM 表格 */
-function makeNativePlaylist(index) {
-  const el = document.createElement('div');
-  el.className = 'panel native-playlist';
-  el.style.cssText = 'position:absolute;left:0;top:0;width:0;height:0;display:none;overflow:hidden';
-  el.innerHTML = '<div class="np-note">原生播放列表（Columns UI Playlist View）<br>网页版待实现 —— 需要媒体库数据层</div>';
-  $('#stage').appendChild(el);
-
-  const p = {
-    __id: 'playlist', __index: index, __el: el, __native: true,
-    Text: 'playlist', ShowCaption: false, Locked: true, TopMost: false, Visible: false, IsVisible: false,
-    InstanceCount: 1,
-    Show(on) { p.Visible = p.IsVisible = !!on; el.style.display = on ? 'block' : 'none'; },
-    Move(x, y, w, h) { el.style.left = x + 'px'; el.style.top = y + 'px'; el.style.width = w + 'px'; el.style.height = h + 'px'; },
-    Hide() { p.Show(false); },
-    GetColourCUI: () => 0, SetColourCUI: () => { }, GetProperty: (n, d) => d, SetProperty: () => { }, NotifyOthers: () => { },
-  };
-  BY_ID.set('playlist', p);
-  return p;
-}
+/* 原生播放列表面板（Columns UI 的 Playlist View）在网页版里由 native/playlist.js 用 DOM 实现 ——
+   见 main() 里的面板创建；这里只保留它需要的宿主状态与命令（LIB.selection 等）。 */
 
 /* ------------------------------------------------------ 跨面板消息总线 -- */
 const BUS = {
@@ -196,12 +178,14 @@ async function main() {
   await preloadFonts();
 
   // 1) 子面板（顺序必须与 frame.js 的 CHILDREN 一致）
+  //    playlist 在原版里是 Columns UI 的原生 Playlist View（不是 JSplitter 面板），
+  //    网页版用 native/playlist.js 以 DOM 复刻它，仍然是一个 iframe 面板（这样能复用主题的
+  //    core.js：颜色/dp/字体，以及 shim 的 plman/fb 接口）
   CHILDREN.forEach((name, i) => {
-    const p = name === 'playlist' ? makeNativePlaylist(i) : makePanel(name, name, i);
+    const p = makePanel(name, name, i);
     // 子面板一律在根面板之上（根面板只负责露出的缝隙）；fx 最后 → 在最上层
     const layer = String(i + 1);
     if (p.__frame) p.__frame.style.zIndex = layer;
-    else p.__el.style.zIndex = layer;
     PANELS.push(p);
   });
 
@@ -276,7 +260,17 @@ async function main() {
  * path 必须是 **Windows 反斜杠**形式 —— 主题的 albumKeyOf()/albumDir() 按 "\\" 切分组专辑，
  * 用正斜杠会把同一张专辑拆成多个 key、货架上就散了。
  */
-const LIB = { files: [], source: null, tracks: [], playlists: [], activePlaylist: -1, focus: -1, playing: { playlist: -1, item: -1 }, albums: [], ready: false };
+const LIB = { files: [], source: null, tracks: [], playlists: [], activePlaylist: -1, focus: -1, focusPlaylist: -1, playing: { playlist: -1, item: -1 }, albums: [], ready: false,
+  // 原生播放列表的选择集（Columns UI 的 Playlist View 有整行多选）
+  // ⚠️ 语义（与 plman 对齐）：focus / selection.items / playing.item 都是**播放列表项下标**，
+  //    不是曲库曲目下标 —— 早期两者恰好相同（演示库的播放列表就是 0..N-1）而掩盖了这个区别。
+  //    曲目下标放在 focusTrack，fb.GetFocusItem 用它。
+  selection: { playlist: -1, items: [] }, focusTrack: -1 };
+/** 播放列表项下标 → 曲库曲目下标 */
+function trackOf(pl, i) {
+  const p = LIB.playlists[pl];
+  return p && p.items ? (p.items[i] ?? -1) : -1;
+}
 
 const SHARED = { transport: { playing: false, paused: false, time: 0, length: 0, volume: -10 } };
 const audio = new Audio();
@@ -452,14 +446,18 @@ function playIndex(i) {
   const src = trackSrc(i);
   if (!src) { log(`第 ${i + 1} 首没有可播放来源`); return; }
   const fresh = LIB.playing.item !== i;
-  LIB.playing = { playlist: LIB.activePlaylist >= 0 ? LIB.activePlaylist : 0, item: i };
-  LIB.focus = i; LIB.focusPlaylist = LIB.activePlaylist;
+  const pl = LIB.activePlaylist >= 0 ? LIB.activePlaylist : 0;
+  const at = ((LIB.playlists[pl] || {}).items || []).indexOf(i);   // 曲目下标 → 播放列表项下标
+  LIB.playing = { playlist: pl, item: at >= 0 ? at : i };
+  LIB.focusPlaylist = pl; LIB.focus = LIB.playing.item; LIB.focusTrack = i;
+  LIB.selection = { playlist: pl, items: [LIB.playing.item] };     // 列表跟着播放走（与双击那一行一致）
   audio.src = src;
   audio.volume = Math.pow(10, (SHARED.transport.volume || -10) / 20);
   audio.play().then(() => {
     SHARED.transport.playing = true; SHARED.transport.paused = false;
     pushShared();
     emit(fresh ? 'on_playback_new_track' : 'on_playback_starting');
+    emit('on_playlist_items_selection_change');
     log(`播放：${LIB.tracks[i].title || LIB.tracks[i].path}`);
   }).catch((e) => log(`播放失败：${e.message}（浏览器可能不支持该格式）`));
 }
@@ -530,7 +528,77 @@ window.__RHINE_CMD__ = (cmd) => {
   if (cmd === 'vol-up') { window.__RHINE_CMD__(`volume:${Math.min(0, (SHARED.transport.volume || -10) + 1)}`); return; }
   if (cmd === 'vol-down') { window.__RHINE_CMD__(`volume:${Math.max(-100, (SHARED.transport.volume || -10) - 1)}`); return; }
   if (cmd.startsWith('play:')) { const [, p, i] = cmd.split(':'); LIB.activePlaylist = Number(p); LIB.playlists[Number(p)] = LIB.playlists[Number(p)] || { name: 'Playlist', items: [] }; playIndex((LIB.playlists[Number(p)].items || [])[Number(i)] ?? Number(i)); return; }
-  if (cmd.startsWith('focus:')) { const [, p, i] = cmd.split(':'); LIB.focusPlaylist = Number(p); LIB.focus = ((LIB.playlists[Number(p)] || {}).items || [])[Number(i)] ?? -1; pushShared(); emit('on_item_focus_change'); return; }
+  if (cmd.startsWith('focus:')) {
+    const [, p, i] = cmd.split(':');
+    const pl = Number(p), at = Number(i);
+    LIB.focusPlaylist = pl; LIB.focus = at; LIB.focusTrack = trackOf(pl, at);
+    pushShared(); emit('on_item_focus_change');
+    return;
+  }
+  // 追加/取消单项选择（Columns UI 的 SetPlaylistSelectionSingle 语义：不清空已有选择）
+  if (cmd.startsWith('pl-seladd:')) {
+    const rest = cmd.slice(10), [plS, iS, onS] = rest.split(':');
+    const pl = Number(plS), at = Number(iS);
+    if (!LIB.selection || LIB.selection.playlist !== pl) LIB.selection = { playlist: pl, items: [] };
+    const set = new Set(LIB.selection.items);
+    if (onS === '0') set.delete(at); else set.add(at);
+    LIB.selection.items = [...set].sort((a, b) => a - b);
+    pushShared(); emit('on_playlist_items_selection_change');
+    return;
+  }
+  // 原生播放列表（native/playlist.js）的选择集：pl-select:<pl>:<下标,下标…>（空 = 清空选择）
+  if (cmd.startsWith('pl-select:')) {
+    const rest = cmd.slice(10), sep = rest.indexOf(':');
+    const pl = Number(rest.slice(0, sep)), list = rest.slice(sep + 1);
+    const items = list ? String(list).split(',').map(Number).filter((n) => Number.isFinite(n) && n >= 0) : [];
+    LIB.selection = { playlist: pl, items };
+    pushShared(); emit('on_playlist_items_selection_change');
+    return;
+  }
+  // 移除当前选择集（原生列表的右键菜单 → plman.RemovePlaylistSelection）
+  if (cmd.startsWith('pl-remove:')) {
+    const pl = Number(cmd.slice(10));
+    const p = LIB.playlists[pl];
+    if (p && LIB.selection.playlist === pl && LIB.selection.items.length) {
+      const gone = LIB.selection.items.slice().sort((a, b) => b - a);
+      for (const at of gone) p.items.splice(at, 1);
+      LIB.selection = { playlist: pl, items: [] };
+      if (LIB.focusPlaylist === pl) { LIB.focus = Math.min(LIB.focus, p.items.length - 1); LIB.focusTrack = trackOf(pl, LIB.focus); }
+      pushShared(); emit('on_playlist_items_removed', pl); emit('on_playlist_items_selection_change');
+      log(`播放列表移除 ${gone.length} 项`);
+    }
+    return;
+  }
+  // 点列标题排序：shim 里逐项求值排序格式后把新顺序发过来
+  if (cmd.startsWith('pl-reorder:')) {
+    const rest = cmd.slice(11), sep = rest.indexOf(':');
+    const pl = Number(rest.slice(0, sep)), order = rest.slice(sep + 1).split(',').map(Number).filter(Number.isFinite);
+    const p = LIB.playlists[pl];
+    if (p && order.length === p.items.length) {
+      p.items = order;
+      LIB.selection = { playlist: pl, items: [] };
+      pushShared(); emit('on_playlist_items_reordered', pl); emit('on_playlist_items_selection_change');
+    }
+    return;
+  }
+  // 播放列表改名（head 双击名字 → plman.RenamePlaylist）
+  if (cmd.startsWith('pl-rename:')) {
+    const rest = cmd.slice(10), sep = rest.indexOf(':');
+    const pl = Number(rest.slice(0, sep)), name = rest.slice(sep + 1).trim();
+    if (LIB.playlists[pl] && name) {
+      LIB.playlists[pl].name = name;
+      pushShared(); emit('on_playlists_changed');
+      log(`播放列表改名 → ${name}`);
+    }
+    return;
+  }
+  if (cmd.startsWith('pl-ensure:')) {
+    const [, p, i] = cmd.split(':');
+    const pw = (BY_ID.get('playlist') || {}).__frame;
+    const win = pw && pw.contentWindow;
+    if (win && win.__rhine) win.__rhine.call('ensure-visible', Number(p), Number(i));
+    return;
+  }
   if (cmd.startsWith('active-playlist:')) {
     LIB.activePlaylist = Number(cmd.slice(16));
     pushShared(); emit('on_playlist_switch'); emit('on_playlists_changed');

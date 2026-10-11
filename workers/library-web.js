@@ -185,7 +185,11 @@ self.onmessage = async (e) => {
       if (!t.title) t.title = fallbackTags(f.path).title || '';
       rows.push(toVals(t, f.path));
       words.push(wordsOf(t));
-      index.push({ path: f.path, url: f.url || null, duration: t.duration || 0 });
+      // ⚠️ 这一项会原样挂到曲目的 t.__src 上，宿主靠它拿"可播放来源"和文件体积：
+      //    url   —— HTTP 演示通道（/__music.json）
+      //    file  —— File System Access 选目录时拿到的 File 对象（宿主用它生成 blob URL）
+      //    size  —— 播放列表头的 "3:02:11 · 1.9 GB" 要用（漏了它总显示 0 KB）
+      index.push({ path: f.path, url: f.url || null, file: f.file || null, size: f.size || 0, duration: t.duration || 0 });
       if (t.picture && t.picture.data && t.album) {
         const k = albumKeyOf(t.album, f.path);
         if (!pictures.has(k)) pictures.set(k, t.picture);

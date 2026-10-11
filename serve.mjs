@@ -94,8 +94,10 @@ function expandIncludes(src) {
 function buildScriptOrders(text) {
   const orders = {};
   const entries = ['frame', 'header', 'transport', 'stage', 'manager', 'head', 'card', 'tip', 'fx', 'placeholder'];
-  for (const name of entries) {
-    const entry = `${THEME}js/${name}.js`;
+  // 网页版自己加的面板入口（不放进主题目录，保持 themes/audio-archive 与原版逐字节一致）：
+  //   playlist —— 原版这里是 Columns UI 的原生 Playlist View，网页版用 DOM 复刻
+  const EXTRA = { playlist: 'native/playlist.js' };
+  for (const [name, entry] of [...entries.map((n) => [n, `${THEME}js/${n}.js`]), ...Object.entries(EXTRA)]) {
     if (!text[entry]) continue;
     const seen = new Set();
     const order = [];

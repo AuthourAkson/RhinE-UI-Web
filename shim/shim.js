@@ -459,7 +459,10 @@
       Find: () => -1, RemoveAll: () => true, Remove: () => false, RemoveById: () => false,
       Clone: () => handleList(items.slice()),
       GetLibraryRelativePaths: () => handleList(),
-      CalcTotalDuration: () => 0, CalcTotalSize: () => 0, CalcTotalSizeOf: () => 0,
+      // head 面板的 "041 TRACKS · 3:02:11 · 1.9 GB" 需要真实的总时长/总体积
+      CalcTotalDuration: () => items.reduce((s, h) => { const t = h && trackAt(h.__id); return s + (t && t.length ? t.length : 0); }, 0),
+      CalcTotalSize: () => items.reduce((s, h) => { const t = h && trackAt(h.__id); return s + (t && t.size ? t.size : 0); }, 0),
+      CalcTotalSizeOf: () => 0,
       GetLength: () => items.length, Dispose: () => { },
       __items: items,
     };
@@ -487,7 +490,7 @@
     // 主题的音量条是**赋值**（transport.js: fb.Volume = pos2vol(...)），只给 getter 会在严格模式下抛错
     set Volume(v) { HOST.command('volume:' + v); },
     GetNowPlaying() { const L = LIB_ROOT(); return L && L.playing && L.playing.item >= 0 ? makeTrackHandle(L.playing.item) : null; },
-    GetFocusItem() { const L = LIB_ROOT(); return L && L.focus >= 0 ? makeTrackHandle(L.focus) : null; },
+    GetFocusItem() { const L = LIB_ROOT(); const t = L ? (L.focusTrack != null ? L.focusTrack : -1) : -1; return t >= 0 ? makeTrackHandle(t) : null; },
     GetLibraryItems() { const list = handleList(libTracks().map((_, i) => makeTrackHandle(i)).filter(Boolean)); return list; },
     CreateHandleList() { return handleList(); },
     TitleFormat(spec) {
@@ -555,8 +558,7 @@
     GetPlaylistItemCount: (i) => ((libPlaylists()[i] || {}).items || []).length,
     PlaylistItemCount: (i) => ((libPlaylists()[i] || {}).items || []).length,
     FindPlaylist: (name) => libPlaylists().findIndex((p) => p.name === name),
-    FindOrCreatePlaylist: (name) => libPlaylists().findIndex((p) => p.name === name),
-    // 主题 playAlbum() 的链路：archivePlaylist()（找不到就建）→ loadAlbum()（清空+装专辑）→ 播放。
+    // CreatePlaylist / FindOrCreatePlaylist / SortByFormat* / RenamePlaylist 定义在下面（播放列表编辑区）    // 主题 playAlbum() 的链路：archivePlaylist()（找不到就建）→ loadAlbum()（清空+装专辑）→ 播放。
     // 之前三个都是 stub：CreatePlaylist 返回 -1 → playAlbum 在 `if (pl < 0) return` 处静默退出，
     // 卡片的 PLAY ALBUM / PLAY TRACK 按钮点了没反应。
     CreatePlaylist: (at, name) => {
@@ -570,14 +572,35 @@
       return { IsValid: item >= 0, PlaylistIndex: item >= 0 ? (L.playing.playlist ?? 0) : -1, PlaylistItemIndex: item };
     },
     GetPlaylistFocusItemIndex: (i) => { const L = LIB_ROOT(); return L && L.focusPlaylist === i ? (L.focus ?? -1) : -1; },
-    GetPlaylistSelectedIndexes: () => { const L = LIB_ROOT(); return L && L.focus >= 0 ? [L.focus] : []; },
+    // 选择集：宿主（app.js）维护 LIB.selection = { playlist, items[] }，
+    // 网页版的原生列表（native/playlist.js）与 Columns UI 的 Playlist View 一样按整行选中
+    GetPlaylistSelectedIndexes: (p) => {
+      const L = LIB_ROOT();
+      if (!L) return [];
+      const sel = L.selection;
+      if (sel && sel.playlist === p) return sel.items.slice();
+      return L.focusPlaylist === p && L.focus >= 0 && (p === undefined || p === L.focusPlaylist) ? [L.focus] : [];
+    },
+    IsPlaylistItemSelected: (p, i) => {
+      const L = LIB_ROOT();
+      if (!L) return false;
+      const sel = L.selection;
+      if (sel && sel.playlist === p) return sel.items.includes(i);
+      return L.focusPlaylist === p && L.focus === i;
+    },
     GetPlaybackQueueContents: () => [],
     ExecutePlaylistDefaultAction: (p, i) => { HOST.command(`play:${p}:${i}`); return true; },
     SetPlaylistFocusItem: (p, i) => { HOST.command(`focus:${p}:${i}`); },
-    SetPlaylistSelectionSingle: (p, i) => { HOST.command(`focus:${p}:${i}`); },
-    ClearPlaylistSelection: () => { },
+    // ⚠️ Columns UI 的语义：第三个参数是"选中/取消"这一项，**追加**到已有选择集
+    //    （不是替换）。主题的 manager/transport 都是 ClearPlaylistSelection + 逐项 SetSingle(true)
+    //    来构造选择集的，实现成替换会让多选只剩最后一项。
+    SetPlaylistSelectionSingle: (p, i, on) => { HOST.command(`pl-seladd:${p}:${i}:${on === false ? 0 : 1}`); HOST.command(`focus:${p}:${i}`); },
+    // 主题的 manager 面板用它清空/滚动原生列表（Columns UI Playlist View 的行为）
+    ClearPlaylistSelection: (p) => { HOST.command(`pl-select:${p}:`); },
+    EnsurePlaylistItemVisible: (p, i) => { HOST.command(`pl-ensure:${p}:${i}`); },
+    // 移除当前选择集（网页版原生列表的右键菜单用；行为同 Columns UI：移除被选中的项）
+    RemovePlaylistSelection: (p) => { HOST.command(`pl-remove:${p}`); },
     ClearPlaylist: (p) => { HOST.command('clear-playlist:' + p); },
-    RenamePlaylist: () => { },
     RemovePlaylist: () => { }, RemovePlaylistSwitch: () => { }, MovePlaylist: () => { },
     DuplicatePlaylist: () => -1, UndoBackup: () => { },
     // list 是 handleList（Proxy）：句柄由 makeTrackHandle(i) 生成，__id 即曲目索引
@@ -595,8 +618,33 @@
         return true;
       } catch (e) { return false; }
     },
-    InsertPlaylistItemsFilter: () => { }, EnsurePlaylistItemVisible: () => { }, SortByFormat: () => false,
-    SortByFormatV2: () => false, ShowAutoPlaylistUI: () => false, IsAutoPlaylist: () => false,
+    InsertPlaylistItemsFilter: () => { },
+    // head 面板点列标题排序：用主题自己的排序格式（%title% / %artist% / %length_seconds%）逐项求值后重排
+    SortByFormatV2: (p, fmtStr, dir) => {
+      const items = ((libPlaylists()[p] || {}).items || []).slice();
+      if (!items.length) return false;
+      let tf = null;
+      try { tf = fb.TitleFormat(fmtStr || ""); } catch (e) { tf = null; }
+      const keyed = items.map((trackIdx, i) => {
+        let k = "";
+        try { k = String((tf && tf.EvalWithMetadb(makeTrackHandle(trackIdx))) || ""); } catch (e) { k = ""; }
+        return { trackIdx, k, i };
+      });
+      const sgn = dir < 0 ? -1 : 1;
+      keyed.sort((a, b) => sgn * (a.k.localeCompare(b.k, undefined, { numeric: true }) || (a.i - b.i)));
+      HOST.command(`pl-reorder:${p}:${keyed.map((k) => k.trackIdx).join(",")}`);
+      return true;
+    },
+    SortByFormat: (p, fmtStr, dir) => plman.SortByFormatV2(p, fmtStr, dir),
+    // 播放列表改名（head 双击名字 → InputBox）
+    RenamePlaylist: (p, name) => { HOST.command(`pl-rename:${p}:${String(name == null ? "" : name)}`); },
+    // 主题的"整库随机"用它拿播放列表（没有就建）
+    FindOrCreatePlaylist: (name, create) => {
+      const found = libPlaylists().findIndex((p) => p.name === name);
+      if (found >= 0) return found;
+      return create ? plman.CreatePlaylist(-1, name) : -1;
+    },
+    ShowAutoPlaylistUI: () => false, IsAutoPlaylist: () => false,
     IsPlaylistLocked: () => false,
     GetPlaylistItemsForPlayback: () => handleList(),
     AddLocations: () => { }, AddPlaylistItemToPlaybackQueue: () => { }, AddItemToPlaybackQueue: () => { },

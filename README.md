@@ -71,14 +71,19 @@ SIGNAL PROFILE 卡片 / 底部传输栏；键盘切换视图；**浅色深色切
 - **封面**：内嵌图片 → OffscreenCanvas 方形裁剪 → 256px 缩略图 + 48px 模糊版 → ImageBitmap 传给面板
 - **播放**：`<audio>` + 传输栏；主题侧 `fb.IsPlaying / PlaybackTime / PlaybackLength / GetNowPlaying /
   PlayOrPause / Next / Prev / Volume`（含 setter）全部接真实值；`plman.*` 接真实播放列表
+- **原生播放列表（02 PLAYLISTS 视图）**：`native/playlist.js` 用 DOM 复刻 Columns UI 的 Playlist View ——
+  列宽/列格式取自主题自己的 `columns/preset-*.json` 与 `.fcl` 预设，与 head 面板画的列标题逐像素对齐；
+  ALBUM/INDEX 两套预设、分组头、正在播放行整行橙色、单击选择 / Shift 范围 / Ctrl 切换 / 双击播放 /
+  方向键与 PageUp·Down、右键菜单、点列标题排序、双击重命名、头部统计（曲目数 · 总时长 · 总体积）
 - 实测：6 首 / 3 张专辑解析 **~20ms**；档案视图货架显示真实封面，
   卡片显示 `Test Album Two · ANOTHER ARTIST · 2023 / 02 TRACKS / 00:14 · FLAC 16/44.1` + 曲目行 `01 Alpha 00:08`
 
 **未做**（后续）：
-- 原生播放列表面板（Columns UI 的 Playlist View 是原生控件）→ 需要自己用 DOM 实现
-- 曲库缓存（IndexedDB）——现在是每次启动重新解析
-- 歌词/翻译的网络请求（CORS）需要代理；波形/频谱还没接真实音频分析
+- 曲库缓存（IndexedDB）——现在是每次启动重新解析，目录句柄也还没持久化
+- 歌词（在线 LRCLIB + 内嵌）需要接 `utils.DownloadFileAsync` / `on_download_file_done`
+- SIGNAL 视图的真实波形与实时频谱（`utils.GetWaveformAsync` / `fb.GetAudioChunkTo`）
 - 顶栏 MENU 里 foobar2000 的原生菜单项（网页版没有对应物，只保证不崩）
+- 整库随机（`S`）需要 `plman.InsertPlaylistItemsFilter` 等播放列表编辑接口
 
 ## 开发/自测工具（`.dev/`）
 
