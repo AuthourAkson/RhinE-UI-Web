@@ -1,0 +1,12 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/live-signal-fix.mjs
+线上 SIGNAL，起始: MODE=dark  非背景像素=10100
+  第1轮 light: 非背景=10421  MODE=light  阴影=700x450
+  第1轮 dark : 非背景=10135  MODE=dark
+  第2轮 light: 非背景=10421  MODE=light  阴影=700x450
+  第2轮 dark : 非背景=10135  MODE=dark
+  第3轮 light: 非背景=10421  MODE=light  阴影=700x450
+  第3轮 dark : 非背景=10135  MODE=dark
+
+paint/error 日志条数: 0 []
+已存 .dev/live-signal-light.png
+[chrome-run] 已关闭无头 Chrome
