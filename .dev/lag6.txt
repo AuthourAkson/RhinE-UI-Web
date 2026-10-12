@@ -1,0 +1,16 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/demo-lag2.mjs
+初始: {"hit":true,"btn":"block","view":"archive"}
+
+切到播放列表…
+  40ms  {"hit":false,"btn":"none","view":"playlists"}
+
+切回档案视图，每 20ms 记录一次（看谁先到）…
+  主题 ar-addmusic 命中区出现: 75 ms
+  demo 按钮出现: 75 ms
+  → 两者差值（越小越跟手）: 0 ms
+
+宿主侧调试计数: {"posts":22,"chan":{"audio-archive":22},"types":["hello","hello","hello","hello","fx-hello","fx","state","hello","state","hello","state","library","boot-end","view","playlist-size","fx","state","view","fx","state"],"calls":101,"lastHit":true,"lastErr":"","why":"显示"}
+
+第二次切回，记录每次 updateDemoBtn 的退出原因:
+[[23146,"显示","archive"],[23148,"显示","archive"],[23150,"显示","archive"],[23198,"显示","archive"],[23199,"显示","archive"],[23252,"显示","archive"],[23253,"显示","archive"],[23369,"显示","archive"],[23369,"显示","archive"],[23457,"显示","archive"],[23610,"显示","archive"],[23611,"显示","archive"],[23747,"显示","archive"],[24027,"显示","archive"]]
+[chrome-run] 已关闭无头 Chrome

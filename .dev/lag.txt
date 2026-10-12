@@ -1,0 +1,6 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/demo-lag-test.mjs
+初始（档案视图空态）: block
+切到播放列表 → 按钮消失耗时: 102 ms
+切回档案视图 → 按钮出现耗时: 720 ms
+（这是 10ms 粒度的轮询测量，含 CDP 往返开销）
+[chrome-run] 已关闭无头 Chrome

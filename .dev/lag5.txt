@@ -1,0 +1,16 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/demo-lag2.mjs
+初始: {"hit":true,"btn":"block","view":"archive"}
+
+切到播放列表…
+  20ms  {"hit":false,"btn":"none","view":"playlists"}
+
+切回档案视图，每 20ms 记录一次（看谁先到）…
+  主题 ar-addmusic 命中区出现: 38 ms
+  demo 按钮出现: 747 ms
+  → 两者差值（越小越跟手）: 709 ms
+
+宿主侧调试计数: {"posts":22,"chan":{"audio-archive":22},"types":["hello","hello","hello","hello","fx-hello","fx","state","hello","state","hello","state","library","boot-end","view","playlist-size","fx","state","view","fx","state"],"calls":115,"lastHit":true,"lastErr":"","why":"显示"}
+
+第二次切回，记录每次 updateDemoBtn 的退出原因:
+[[23792,"fx影片中","archive"],[23796,"fx影片中","archive"],[23835,"fx影片中","archive"],[23835,"fx影片中","archive"],[23902,"fx影片中","archive"],[23902,"fx影片中","archive"],[24019,"fx影片中","archive"],[24019,"fx影片中","archive"],[24041,"fx影片中","archive"],[24257,"fx影片中","archive"],[24257,"fx影片中","archive"],[24331,"fx影片中","archive"],[24633,"显示","archive"],[24681,"显示","archive"]]
+[chrome-run] 已关闭无头 Chrome

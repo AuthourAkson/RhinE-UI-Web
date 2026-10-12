@@ -118,13 +118,21 @@ function ensureDemoBtn() {
 }
 function updateDemoBtn() {
   const btn = ensureDemoBtn();
-  // 开场影片还在放就不显示（见 introDone 的说明）
+  const D = (window.__DEMO_DEBUG__ ||= { posts: 0, chan: {}, types: [], calls: 0, lastHit: null, lastErr: '' });
+  D.calls++;
   const fx = PANELS.find((p) => p.__id === 'fx');
-  const fxVisible = !!(fx && fx.__frame && getComputedStyle(fx.__frame).display !== 'none');
-  if (fxVisible && !introDone) { btn.style.display = 'none'; return; }
+  // 开场影片是否**正在放**：直接读 fx.js 自己的 boot.ended（首次播放和重播都准）。
+  // ⚠️ 不能用 `fx 面板 display !== 'none'` 判断：影片放完后那个 iframe 依然是可见的透明浮层
+  //    （实测切视图时它一直"可见"→ 按钮被卡住 700ms 才出现，用户反馈的"延迟一下"就是这个）。
+  let filmPlaying = false;
+  const fxWin = fx && fx.__frame && fx.__frame.contentWindow;
+  if (fxWin) {
+    try { filmPlaying = !!fxWin.eval('typeof boot !== "undefined" && boot.started && !boot.ended'); } catch (e) { filmPlaying = false; }
+  }
+  if (filmPlaying && !introDone) { D.why = 'fx影片中'; btn.style.display = 'none'; return; }
   const stage = PANELS.find((p) => p.__id === 'stage');
   const w = stage && stage.__frame && stage.__frame.contentWindow;
-  if (!w || getComputedStyle(stage.__frame).display === 'none') { btn.style.display = 'none'; return; }
+  if (!w || getComputedStyle(stage.__frame).display === 'none') { D.why = 'stage不可见'; btn.style.display = 'none'; return; }
   let info = null;
   try {
     info = w.eval(`(function(){
@@ -136,7 +144,8 @@ function updateDemoBtn() {
       } catch (e) { return null; }
     })()`);
   } catch (e) { info = null; }
-  if (!info) { btn.style.display = 'none'; return; }
+  if (!info) { D.lastHit = false; D.why = 'eval没命中'; btn.style.display = 'none'; return; }
+  D.lastHit = true; D.why = '显示';
   const d = JSON.parse(info);
   const r = stage.__frame.getBoundingClientRect();
   btn.textContent = ht('+ LOAD DEFAULT AUDIO LIBRARY');
@@ -150,7 +159,11 @@ function updateDemoBtn() {
 }
 function startDemoPoll() {
   clearInterval(demoPoll);
-  demoPoll = setInterval(() => { try { updateDemoBtn(); } catch (e) { } }, 400);
+  // 主路径是事件驱动（BUS.post 里解析 audio-archive 频道里的 view/state 消息，切视图立刻响应）；
+  // 这个轮询只当兜底（窗口尺寸变化、面板重排等不发消息的情况），所以放慢到 300ms。
+  demoPoll = setInterval(() => { try { updateDemoBtn(); } catch (e) { } }, 300);
+  window.addEventListener('resize', () => { try { updateDemoBtn(); } catch (e) { } });
+  setTimeout(() => { try { updateDemoBtn(); } catch (e) { } }, 300);   // 启动后先摆一次
 }
 
 /* ------------------------------------------------------- 宿主自己的界面文案 --
@@ -314,9 +327,28 @@ const BUS = {
   //   默认 view=playlists，on_paint 里四个视图分支都不匹配，画面全黑）
   cached: new Map(),
   post(fromId, name, info) {
-    // 开场影片放完的信号（主题 fx.js endBoot() → send("boot-end")）
-    if (name === 'boot-end') introDone = true;
+    // 排查用的小计数（只增不减，几十字节）：看主题消息到底进没进宿主
+    const D = (window.__DEMO_DEBUG__ ||= { posts: 0, chan: {}, types: [], calls: 0, lastHit: null, lastErr: '' });
+    D.posts++; D.chan[name] = (D.chan[name] || 0) + 1;
+    try { const t = JSON.parse(info); if (t && t.type) { D.types.push(t.type); if (D.types.length > 20) D.types.shift(); } } catch (e) { }
+    // 开场影片放完的信号（主题 fx.js endBoot() → send("boot-end")）。
+    // ⚠️ 和 view 一样：type 在 info 的 JSON 里，name 只是频道名（audio-archive）——
+    //    之前按 name 比，introDone 永远是 false。
     if (name === 'audio-archive') {
+      try { const m0 = JSON.parse(info); if (m0 && m0.type === 'boot-end') introDone = true; } catch (e) { }
+    }
+    if (name === 'audio-archive') {
+      // ⚠️ 主题的 send(type, data) 是 window.NotifyOthers(BUS, JSON.stringify({type, data}))：
+      //    宿主拿到的 name 是**频道名**（audio-archive），type 在 info 的 JSON 里。
+      //    之前我在外面比 name === 'view'，永远不匹配 —— 表现为切回档案视图要等 700ms 轮询才出现。
+      try {
+        const m0 = JSON.parse(info);
+        if (m0 && (m0.type === 'view' || m0.type === 'state')) {
+          // 连打一串重试：主题要先重排/重画**空态**才会注册 ar-addmusic 命中区
+          // （实测命中区 36ms 就出现，所以这里跟着它走，差值应在一帧内）
+          for (const t of [20, 60, 120, 240, 480, 900]) setTimeout(() => { try { updateDemoBtn(); } catch (e) { } }, t);
+        }
+      } catch (e) { }
       try { const m = JSON.parse(info); if (m && m.type === 'state') BUS.cached.set('state', info); } catch (e) { }
     }
     for (const [id, frame] of IFRAMES) {

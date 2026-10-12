@@ -1,0 +1,11 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/demo-lag2.mjs
+初始: {"hit":true,"btn":"block","view":"archive"}
+
+切到播放列表…
+  40ms  {"hit":false,"btn":"none","view":"playlists"}
+
+切回档案视图，每 20ms 记录一次（看谁先到）…
+  主题 ar-addmusic 命中区出现: 36 ms
+  demo 按钮出现: 713 ms
+  → 两者差值（越小越跟手）: 677 ms
+[chrome-run] 已关闭无头 Chrome
