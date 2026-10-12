@@ -91,6 +91,13 @@ function onHudKey(e) {
  *   · 颜色/字号取自主题的 tokens（C.fg / C.bg / AR_ST.btn），所以深浅色自动一致
  */
 let demoBtn = null, demoPoll = 0;
+/**
+ * 开场影片（fx 面板）是否已经放完。
+ * 主题 fx.js 的 endBoot() 会 send("boot-end")，这里收下当信号 ——
+ * 否则 demo 按钮画在顶层文档、z-index 比 fx 那个 iframe 高，影片还在放就盖在上面了（用户实测）。
+ * 另留一条兜底：fx 面板被隐藏也算放完（万一 boot-end 因为影片素材缺失没发出来）。
+ */
+let introDone = false;
 function argbToCss(v) {
   const n = Number(v) >>> 0;
   return `rgb(${(n >>> 16) & 255},${(n >>> 8) & 255},${n & 255})`;
@@ -111,6 +118,10 @@ function ensureDemoBtn() {
 }
 function updateDemoBtn() {
   const btn = ensureDemoBtn();
+  // 开场影片还在放就不显示（见 introDone 的说明）
+  const fx = PANELS.find((p) => p.__id === 'fx');
+  const fxVisible = !!(fx && fx.__frame && getComputedStyle(fx.__frame).display !== 'none');
+  if (fxVisible && !introDone) { btn.style.display = 'none'; return; }
   const stage = PANELS.find((p) => p.__id === 'stage');
   const w = stage && stage.__frame && stage.__frame.contentWindow;
   if (!w || getComputedStyle(stage.__frame).display === 'none') { btn.style.display = 'none'; return; }
@@ -128,7 +139,7 @@ function updateDemoBtn() {
   if (!info) { btn.style.display = 'none'; return; }
   const d = JSON.parse(info);
   const r = stage.__frame.getBoundingClientRect();
-  btn.textContent = ht('+ LOAD DEMO LIBRARY');
+  btn.textContent = ht('+ LOAD DEFAULT AUDIO LIBRARY');
   btn.style.left = Math.round(r.left + d.h.x) + 'px';
   btn.style.top = Math.round(r.top + d.h.y + d.h.h + 10) + 'px';
   btn.style.height = Math.round(d.h.h) + 'px';
@@ -216,8 +227,8 @@ const HOST_I18N = {
     'Library indexed: {0} tracks / {1} albums ({2} ms)': '曲库解析完成：{0} 首 / {1} 张专辑（解析 {2} ms）',
     'HTTP library: {0} files': 'HTTP 曲库：{0} 个文件',
     'Loading the demo library failed: {0}': '加载演示曲库失败：{0}',
-    'Loading the built-in demo library…': '正在载入内置 demo 曲库…',
-    '+ LOAD DEMO LIBRARY': '+ 载入默认音乐 Demo',
+    'Loading the built-in demo library…': '正在载入内置音频库…',
+    '+ LOAD DEFAULT AUDIO LIBRARY': '+ 载入默认音频库',
     'Playing: {0}': '播放：{0}',
     'Playback failed: {0} (the browser may not support this format)': '播放失败：{0}（浏览器可能不支持该格式）',
     'Choosing a folder was cancelled': '已取消选择目录',
@@ -303,6 +314,8 @@ const BUS = {
   //   默认 view=playlists，on_paint 里四个视图分支都不匹配，画面全黑）
   cached: new Map(),
   post(fromId, name, info) {
+    // 开场影片放完的信号（主题 fx.js endBoot() → send("boot-end")）
+    if (name === 'boot-end') introDone = true;
     if (name === 'audio-archive') {
       try { const m = JSON.parse(info); if (m && m.type === 'state') BUS.cached.set('state', info); } catch (e) { }
     }

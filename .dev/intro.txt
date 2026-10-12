@@ -1,0 +1,8 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/intro-btn-test.mjs
+t≈4000ms  {"fx可见":"block","按钮":{"文案":"","display":"none"}}
+t≈6000ms  {"fx可见":"block","按钮":{"文案":"","display":"none"}}
+t≈9000ms  {"fx可见":"none","按钮":{"文案":"+ 载入默认音频库","display":"block"}}
+t≈13000ms  {"fx可见":"none","按钮":{"文案":"+ 载入默认音频库","display":"block"}}
+t≈20000ms  {"fx可见":"none","按钮":{"文案":"+ 载入默认音频库","display":"block"}}
+t≈28000ms  {"fx可见":"none","按钮":{"文案":"+ 载入默认音频库","display":"block"}}
+[chrome-run] 已关闭无头 Chrome
