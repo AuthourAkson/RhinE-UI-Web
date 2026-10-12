@@ -352,15 +352,7 @@
       const cv = document.createElement('canvas');
       const lw = Math.max(1, Math.round(w)), lh = Math.max(1, Math.round(h));
       cv.width = Math.max(1, Math.round(lw * d)); cv.height = Math.max(1, Math.round(lh * d));
-      const g2 = cv.getContext('2d');
-      g2.setTransform(d, 0, 0, d, 0, 0);
-      BASE_D.set(g2, d);
-      return {
-        __el: cv, __ready: true, __raw: cv, Width: lw, Height: lh, __dpr: d, __image: true,
-        GetGraphics() { return makeGr(g2, cv); },
-        ReleaseGraphics() { },
-        Dispose() { },
-      };
+      return makeImageHandle(cv, lw, lh, d);
     },
     LoadImageAsyncV(path, onDone) { const img = imageFor(norm(path)); queueMicrotask(() => onDone && onDone(img)); return img; },
     // ⚠️ 主题实际用的是这个名字（带数字后缀，我第一次枚举 API 时用 [A-Za-z_] 漏掉了它）：
@@ -402,6 +394,86 @@
     return best;
   }
 
+  /* ------------------------------------------------------------------ 图像句柄 --
+   * 主题对图像对象还会调用原版 SMP/D2D 的这几个方法（我一开始漏了，导致真 bug）：
+   *   Resize(w, h)  任意尺寸副本（7 处）—— light 模式下环形的柔和阴影就靠它
+   *   StackBlur(r)  就地模糊（4 处）
+   *   Clone()       副本（2 处）
+   * 缺 Resize 时的症状：ring.js:29 `s.Resize(...)` 抛 TypeError → 整帧 on_paint 被打断
+   *   → SIGNAL 视图中心（频谱 + 环管线）整块空白，切回 dark 或重进视图才恢复（用户实测）。
+   */
+  function sourceCanvas(handle) {
+    const el = handle && handle.__el;
+    if (!el) return null;
+    if (el.tagName === 'CANVAS') return el;
+    if (handle.__cv) return handle.__cv;
+    const w = el.naturalWidth || el.width || handle.Width || 1;
+    const h = el.naturalHeight || el.height || handle.Height || 1;
+    const cv = document.createElement('canvas');
+    cv.width = Math.max(1, w); cv.height = Math.max(1, h);
+    cv.getContext('2d').drawImage(el, 0, 0, cv.width, cv.height);
+    handle.__cv = cv;
+    return cv;
+  }
+  /** 造一个和 CreateImage 同形状的句柄（能被 DrawImage 当源用、也能 GetGraphics 继续画） */
+  function makeImageHandle(cv, lw, lh, d) {
+    const g2 = cv.getContext('2d');
+    g2.setTransform(d, 0, 0, d, 0, 0);
+    BASE_D.set(g2, d);
+    const h = {
+      __el: cv, __ready: true, __raw: cv, Width: lw, Height: lh, __dpr: d, __image: true,
+      GetGraphics() { return makeGr(g2, cv); },
+      ReleaseGraphics() { },
+      Dispose() { },
+    };
+    return addImageOps(h);
+  }
+  function addImageOps(h) {
+    h.Resize = function (w, hh) {
+      const lw = Math.max(1, Math.round(w)), lh = Math.max(1, Math.round(hh));
+      const d = h.__dpr || window.devicePixelRatio || 1;
+      const out = document.createElement('canvas');
+      out.width = Math.max(1, Math.round(lw * d)); out.height = Math.max(1, Math.round(lh * d));
+      const g = out.getContext('2d');
+      g.setTransform(d, 0, 0, d, 0, 0);
+      g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+      const src = sourceCanvas(h);
+      if (src) g.drawImage(src, 0, 0, src.width, src.height, 0, 0, lw, lh);
+      return makeImageHandle(out, lw, lh, d);
+    };
+    // 就地模糊。用 canvas 的 filter 近似原版 StackBlur（radius 与高斯 σ 大致两倍关系，取一半）
+    h.StackBlur = function (radius) {
+      const src = sourceCanvas(h);
+      if (!src || !src.width) return;
+      const tmp = document.createElement('canvas');
+      tmp.width = src.width; tmp.height = src.height;
+      const tg = tmp.getContext('2d');
+      tg.filter = `blur(${Math.max(0, (Number(radius) || 0) / 2).toFixed(2)}px)`;
+      tg.drawImage(src, 0, 0);
+      const g = src.getContext('2d');
+      const d = h.__dpr || 1;
+      g.save();
+      g.setTransform(1, 0, 0, 1, 0, 0);
+      g.clearRect(0, 0, src.width, src.height);
+      g.filter = 'none';
+      g.drawImage(tmp, 0, 0);
+      g.restore();
+      g.setTransform(d, 0, 0, d, 0, 0);
+      if (h.__cv && h.__cv !== src) { /* 句柄缓存的是同一张，无需处理 */ }
+    };
+    h.Clone = function () {
+      const src = sourceCanvas(h);
+      const d = h.__dpr || window.devicePixelRatio || 1;
+      const out = document.createElement('canvas');
+      out.width = Math.max(1, (src && src.width) || Math.round((h.Width || 1) * d));
+      out.height = Math.max(1, (src && src.height) || Math.round((h.Height || 1) * d));
+      const g = out.getContext('2d');
+      if (src) g.drawImage(src, 0, 0);
+      return makeImageHandle(out, h.Width || out.width, h.Height || out.height, d);
+    };
+    return h;
+  }
+
   function imageFor(rel) {
     if (!rel) return null;
     if (imageCache.has(rel)) return imageCache.get(rel);
@@ -424,7 +496,7 @@
     el.src = '/' + rel;
     handle.__el = el;
     imageCache.set(rel, handle);
-    return handle;
+    return addImageOps(handle);
   }
 
   /** 统一入口：拿到"已就绪（或已失败）"的图片句柄 */

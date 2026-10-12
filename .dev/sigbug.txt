@@ -1,0 +1,30 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/signal-light-bug.mjs
+=== 深色 SIGNAL ===
+  MODE: dark  画布: {"采样亮像素":5612,"画布":"2561x1095"}
+  AUDIO: {"live":false,"playing":false}
+
+=== 切到 light ===
+  MODE: light  画布: {"采样亮像素":75684,"画布":"2561x1095"}
+  AUDIO: {"live":false,"playing":false}
+  令牌色: {"bg":4293848551,"fg":4280625185,"accent":4294932993}
+
+=== 切回 dark ===
+  MODE: dark  画布: {"采样亮像素":5642,"画布":"2561x1095"}
+
+捕获到的日志（错误/clock/paint）:
+   [log] [Worker 桥] audio-archive-library ← themes\audio-archive\js\workers\library.js  →  /workers/library-web.js
+   [log] audio-archive library: 8 tracks, 2 albums, index 103 ms, cache 0 ms (0 rows)
+   [log] audio-archive library: 8 tracks, 2 albums, index 126 ms, cache 0 ms (0 rows)
+   [error] [paint] TypeError: s.Resize is not a function
+    at ringLoad (http://127.0.0.1:8300/themes/audio-archive/js/lib/ring.js:29:42)
+    at ringDraw (http://127.0.0.1:8300/themes/audio-archive/js/lib/ring.
+   [warning] [stage] error: [paint] TypeError: s.Resize is not a function
+    at ringLoad (http://127.0.0.1:8300/themes/audio-archive/js/lib/ring.js:29:42)
+    at ringDraw (http://127.0.0.1:8300/themes/audio-archi
+   [error] [stage] paint: TypeError: s.Resize is not a function
+    at ringLoad (http://127.0.0.1:8300/themes/audio-archive/js/lib/ring.js:29:42)
+    at ringDraw (http://127.0.0.1:8300/themes/audio-archive/js/li
+   [log] ⚠️ stage paint: TypeError: s.Resize is not a function
+    at ringLoad (http://127.0.0.1:8300/themes/audio-archive/js/lib/ring.js:29:42)
+    at ringDraw (http://127.0.0.1:8300/t
+[chrome-run] 已关闭无头 Chrome
