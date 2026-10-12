@@ -1,0 +1,14 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/dup-error-live.mjs
+阶段① 加载完成: 33 条
+   [exception] Uncaught SyntaxError: Identifier 'SETTINGS_FILE' has already been declared
+   [transport] window.onerror: Uncaught SyntaxError: Identifier 'SETTINGS_FILE' has already been declared @settings.js:1:1
+   ⚠️ transport window.onerror: Uncaught SyntaxError: Identifier 'SETTINGS_FILE' has already been declared @settings.js:1:1
+
+阶段② 切 light 后: 0 条
+
+阶段③ 切回 dark 后: 0 条
+
+各面板的脚本注入次数（看有没有谁被注了两次）:
+{"header":18,"transport":30,"stage":29,"manager":16,"head":16,"playlist":16,"card":19,"tip":15,"fx":15,"root":15}
+root 面板里的 settings.js 出现次数: 1
+[chrome-run] 已关闭无头 Chrome

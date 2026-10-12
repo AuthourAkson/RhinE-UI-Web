@@ -1630,6 +1630,20 @@
   window.__boot = function boot(cfg) {
     BOOT_CFG = cfg;
     CFG = cfg; MANIFEST = cfg.manifest;
+    // ⚠️ 同一 realm 内的**重复 boot**：宿主在 iframe 的 load 事件里调 start()，
+    //    而线上实测 transport 面板会收到两次 load（脚本数 30 = 14×2 + shim）→
+    //    主题脚本被注入两遍 → 第二次执行时 `const SETTINGS_FILE` 重复声明 →
+    //    `Uncaught SyntaxError: Identifier 'SETTINGS_FILE' has already been declared`，
+    //    一加载就刷 33 条错误（用户没看到，但这是真 bug）。
+    //    处理：跳过"新建画布 + 注入脚本"这两件只能做一次的事，**但照常重跑握手**
+    //    （否则面板不再报 ready，宿主那边会一直等 —— 我第一次直接 return 就把模式切换卡死了）。
+    //    真正的 window.Reload() 是导航，realm 全新、这个标记不存在，刷新照常。
+    if (window.__RHINE_BOOTED__) {
+      console.warn('[shim] 重复 boot：跳过画布与脚本注入，只重跑握手');
+      try { finishBoot(performance.now()); } catch (e) { console.error('[shim] 重复 boot 握手失败', e); }
+      return;
+    }
+    window.__RHINE_BOOTED__ = true;
     // 一次性把"原版参考状态"种进设置文件（种子 = 根目录 audio-archive-settings.json，由服务器进清单）。
     // 老浏览器的 localStorage 里存着更早的设置（TRACKS 模式、别的选中项），而 ReadTextFile 是
     // localStorage 优先 —— 不迁移的话永远读不回参考状态。seed 版本号一致就不动，
