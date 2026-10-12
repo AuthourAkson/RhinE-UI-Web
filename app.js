@@ -23,11 +23,62 @@ let rootPanel = null;
 /* ------------------------------------------------------------------ 工具 -- */
 const $ = (sel) => document.querySelector(sel);
 
+/* ------------------------------------------------------------------ 左下角 HUD --
+ * 它是"状态条 + 两个开发按钮"，成品里不该一直占着画面。
+ * 逻辑：每次 log() 都重置计时，**安静 4 秒后自动淡出**（加载期间日志连续，所以不会中途消失；
+ * 最后一次"面板就绪"之后 4 秒收起 = 一次加载完毕）。
+ * 藏起来之后按 **Alt+H** 随时唤回（Preferences › 快捷键里也列了这一条）。
+ * 注意：只是 display:none，文本仍在，自动化测试照样能读 #log 的内容。
+ */
+let hudTimer = 0, hudHidden = false;
+function hideHud() {
+  const h = $('#hud');
+  if (!h || hudHidden) return;
+  hudHidden = true;
+  h.style.transition = 'opacity .45s ease';
+  h.style.opacity = '0';
+  setTimeout(() => { if (hudHidden) h.style.display = 'none'; }, 470);
+}
+function showHud(keep) {
+  const h = $('#hud');
+  if (!h) return;
+  hudHidden = false;
+  h.style.display = '';
+  requestAnimationFrame(() => { h.style.opacity = '1'; });
+  clearTimeout(hudTimer);
+  if (keep !== true) hudTimer = setTimeout(hideHud, 4000);   // 唤回后 4 秒再收起
+}
+function hudIdle() {                     // 每次有新状态就重新计时
+  clearTimeout(hudTimer);
+  if (!hudHidden) hudTimer = setTimeout(hideHud, 4000);
+}
+
 function log(msg) {
   const el = $('#log');
   if (el) el.textContent = msg;
   (window.__ERRORS ||= []).push(msg);
   console.log(msg);
+  try { hudIdle(); } catch (e) { }
+}
+
+/**
+ * 顶层文档 + 每个同源面板文档各挂一份键盘监听。
+ * 为什么不能只挂顶层：整个界面是 iframe，键盘焦点通常在某个面板里（Preferences 的 Esc 就踩过这个坑）。
+ * 面板会因语言/模式切换而重载 → 监听随之丢失，所以面板 ready 时会再挂一次（见 ready 分支）。
+ */
+function onKeyEverywhere(handler, capture = true) {
+  const targets = [document];
+  for (const p of PANELS) {
+    try { if (p.__frame && p.__frame.contentWindow) targets.push(p.__frame.contentWindow.document); } catch (e) { }
+  }
+  for (const d of targets) { try { d.addEventListener('keydown', handler, capture); } catch (e) { } }
+}
+/** Alt+H 唤回左下角状态条（它加载完会自动隐藏） */
+function onHudKey(e) {
+  if (e.altKey && (e.key === 'h' || e.key === 'H' || e.code === 'KeyH')) {
+    e.preventDefault(); e.stopPropagation();
+    showHud();
+  }
 }
 
 /* ------------------------------------------------------- 宿主自己的界面文案 --
@@ -85,6 +136,7 @@ const HOST_I18N = {
     'Inspect the current album': '查看 / 检查当前专辑',
     'Search (filters the Archive in place; other views create a Search playlist)': '搜索（档案视图里就地过滤，其它视图建 Search 列表）',
     'Leave the search / close overlays': '退出搜索 / 关闭浮层',
+    'Show the status bar again (it hides itself once loading finishes)': '重新显示底部状态条（加载完成后会自动隐藏）',
     'Play / pause': '播放 / 暂停',
     'About / ABOUT': '关于 / ABOUT',
     'Theme version': '主题版本',
@@ -267,6 +319,8 @@ function bootPanel(p, entry, extra = {}) {
       //    时置真，而面板就绪需要好几秒（线上实测 stage 用了 7.3 s）——
       //    只靠启动时的定时器会早于 shim 出现，公告发不出去，档案页就一直停在"正在索引媒体库…"。
       if (noLibrary()) announceEmptyLibrary(p);
+      // 面板重载会丢掉键盘监听，就绪时补挂（Alt+H 唤回状态条）
+      try { p.__frame.contentWindow.document.addEventListener('keydown', onHudKey, true); } catch (e) { }
     }
     if (m.type === 'booted') {
       console.log(`[${p.__id}] 入口已执行`, m.data);
@@ -293,6 +347,7 @@ function bootPanel(p, entry, extra = {}) {
 
 async function main() {
   applyHostLang();                     // HUD 按钮文案跟随主题的界面语言
+  onKeyEverywhere(onHudKey);           // Alt+H 唤回左下角状态条（加载完会自动隐藏）
   log('读取清单…');
   manifest = await (await fetch('/__manifest.json')).json();
   log(`清单：${Object.keys(manifest.text).length} 个文本 / ${Object.keys(manifest.images).length} 张图尺寸`);
@@ -1052,6 +1107,7 @@ function prefOpen() {
     ['I', ht('Inspect the current album')],
     ['/', ht('Search (filters the Archive in place; other views create a Search playlist)')],
     ['Esc', ht('Leave the search / close overlays')],
+    ['Alt+H', ht('Show the status bar again (it hides itself once loading finishes)')],
     ['␣', ht('Play / pause')],
   ]) line(k, v);
 

@@ -1,0 +1,6 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/hud-test.mjs
+启动 6s（加载中，应可见）: {"display":"block","opacity":"1","文本":"Library indexed: 7 tracks / 2 albums (10"}
+启动 20s（应已自动隐藏）: {"display":"none","opacity":"0","文本":"Library indexed: 7 tracks / 2 albums (10"}
+按 Alt+H 后: {"display":"block","opacity":"1","文本":"Library indexed: 7 tracks / 2 albums (10"}
+再等 5s（应再次自动隐藏）: {"display":"none","opacity":"0","文本":"Library indexed: 7 tracks / 2 albums (10"}
+[chrome-run] 已关闭无头 Chrome

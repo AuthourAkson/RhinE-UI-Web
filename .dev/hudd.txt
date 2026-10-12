@@ -1,0 +1,11 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/hud-diag.mjs
+页面目标: [ 'about:blank' ]
+URL: chrome-error://chromewebdata/
+title: 127.0.0.1
+body 子元素: ["DIV#content.","DIV#offline-resources.","SCRIPT#."]
+#hud 存在: false
+#log 文本: undefined
+hideHud 类型: undefined
+错误: []
+head 里 hud 样式: ["/* Copyright 2017 The Chromium","/* Copyright 2014 The Chromium","/* Copyright 2013 The Chromium"]
+[chrome-run] 已关闭无头 Chrome
