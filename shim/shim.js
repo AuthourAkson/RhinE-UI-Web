@@ -226,12 +226,17 @@
       },
       DrawEffect(fx, x, y, w, h, srcW, srcH) {
         if (!fx || !fx.__input || !fx.__input.__ready) return;
-        ctx.save();
-        if (fx.__css) ctx.filter = fx.__css;
         const dw = w || srcW || fx.__input.Width, dh = h || srcH || fx.__input.Height;
-        const id = fx.__input.__dpr || 1;
-        ctx.drawImage(fx.__input.__el, 0, 0, fx.__input.Width * id, fx.__input.Height * id, x, y, dw, dh);
-        ctx.restore();
+        const src = sourceCanvas(fx.__input);
+        // ⚠️⚠️ 主题的两处 Effect 都是 **5×4 颜色矩阵**，不是色相滤镜：
+        //   archive.js tinted()  把 frost 按 f 向背景色淡出（k=1-f 缩放 + r*f,g*f,b*f 偏移）
+        //   draw.js   hueMatrix() 配色方案的色相旋转（同一套矩阵机制）
+        // 之前我把它当成色相旋转、用 CSS hue-rotate 近似 —— 于是 tinted() 的 10 个 f 档位
+        // 渲染出来**完全一样** → 选中磁带时不是"逐渐虚化"，而是最后一帧直接切成 clear，
+        // 看着就是"磁带画面中间突然变色"（用户实测）。现在逐像素按矩阵算。
+        const img = (fx.__m && src) ? colourMatrix(src, fx.__m) : src;
+        if (!img) return;
+        ctx.drawImage(img, 0, 0, img.width, img.height, x, y, dw, dh);
       },
 
       /* --- 裁剪 / 变换 --- */
@@ -360,8 +365,11 @@
     LoadImageAsyncV2(_unused, path) { return imageReady(norm(path)); },
     LoadImageAsync(path, onDone) { const img = imageFor(norm(path)); queueMicrotask(() => onDone && onDone(img)); return img; },
     Effect(clsid) {
-      const fx = { Clsid: String(clsid || '').toUpperCase(), __input: null, __css: '', values: {} };
-      fx.SetValue = (i, v) => { fx.values[i] = v; if (i === 0 && v && v.length >= 20) fx.__deg = hueFromMatrix(v); if (fx.__deg) fx.__css = `hue-rotate(${fx.__deg.toFixed(2)}deg)`; };
+      const fx = { Clsid: String(clsid || '').toUpperCase(), __input: null, __m: null, values: {} };
+      fx.SetValue = (i, v) => {
+        fx.values[i] = v;
+        if (i === 0 && v && v.length >= 20) fx.__m = v;
+      };
       fx.SetInput = (i, img) => { if (i === 0) fx.__input = img; };
       fx.SetInputCount = () => { };
       fx.SetOutputRect = () => { };
@@ -415,8 +423,46 @@
     handle.__cv = cv;
     return cv;
   }
-  /** 造一个和 CreateImage 同形状的句柄（能被 DrawImage 当源用、也能 GetGraphics 继续画） */
-  function makeImageHandle(cv, lw, lh, d) {
+  /**
+   * D2D 5×4 颜色矩阵逐像素应用（列 = 输入 R,G,B,A 与偏移，行 = 输出 —— 与主题的两套矩阵都吻合）：
+   *   outR = m0*R + m4*G + m8*B  + m12*A + m16
+   *   outG = m1*R + m5*G + m9*B  + m13*A + m17
+   *   outB = m2*R + m6*G + m10*B + m14*A + m18
+   *   outA = m3*R + m7*G + m11*B + m15*A + m19
+   * 例：tinted() 的 [k,0,0,0, 0,k,0,0, 0,0,k,0, 0,0,0,1, r*f,g*f,b*f,0] → outR = k*R + r*f（向背景淡出）✓
+   * 结果按 源画布 + 矩阵 缓存（fx.js 的启动影片每帧都调 DrawEffect，不缓存会卡）。
+   */
+  const MATRIX_CACHE = new Map();
+  function colourMatrix(src, m) {
+    const key = m[0] + ',' + m[4] + ',' + m[8] + ',' + m[12] + ',' + m[16] + ',' + m[5] + ',' + m[10] + ',' + m[14] + ',' + m[17] + ',' + m[15];
+    let byKey = null;
+    for (const [s, v] of MATRIX_CACHE) if (s === src) { byKey = v; break; }
+    if (byKey && byKey.has(key)) return byKey.get(key);
+    const cv = document.createElement('canvas');
+    cv.width = src.width; cv.height = src.height;
+    const g = cv.getContext('2d', { willReadFrequently: true });
+    g.drawImage(src, 0, 0);
+    const id = g.getImageData(0, 0, cv.width, cv.height);
+    const d = id.data;
+    for (let i = 0; i < d.length; i += 4) {
+      const r = d[i], gg = d[i + 1], b = d[i + 2], a = d[i + 3];
+      const nr = m[0] * r + m[4] * gg + m[8] * b + m[12] * a + m[16];
+      const ng = m[1] * r + m[5] * gg + m[9] * b + m[13] * a + m[17];
+      const nb = m[2] * r + m[6] * gg + m[10] * b + m[14] * a + m[18];
+      const na = m[3] * r + m[7] * gg + m[11] * b + m[15] * a + m[19];
+      d[i] = nr < 0 ? 0 : nr > 255 ? 255 : nr;
+      d[i + 1] = ng < 0 ? 0 : ng > 255 ? 255 : ng;
+      d[i + 2] = nb < 0 ? 0 : nb > 255 ? 255 : nb;
+      d[i + 3] = na < 0 ? 0 : na > 255 ? 255 : na;
+    }
+    g.putImageData(id, 0, 0);
+    if (!byKey) { byKey = new Map(); MATRIX_CACHE.set(src, byKey); }
+    if (byKey.size > 24) byKey.delete(byKey.keys().next().value);
+    byKey.set(key, cv);
+    if (MATRIX_CACHE.size > 6) MATRIX_CACHE.delete(MATRIX_CACHE.keys().next().value);
+    return cv;
+  }
+  /** 造一个和 CreateImage 同形状的句柄（能被 DrawImage 当源用、也能 GetGraphics 继续画） */  function makeImageHandle(cv, lw, lh, d) {
     const g2 = cv.getContext('2d');
     g2.setTransform(d, 0, 0, d, 0, 0);
     BASE_D.set(g2, d);

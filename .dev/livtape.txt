@@ -1,0 +1,9 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/live-tape.mjs
+曲库: {"files":0,"tracks":0}
+
+各淡出档位平均色: f=0 亮度 0  ·  f=0.5 亮度 0  ·  f=1 亮度 0
+
+点击命中区: null
+
+控制台错误: 0 []
+[chrome-run] 已关闭无头 Chrome

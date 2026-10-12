@@ -1,0 +1,19 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/tape-fade-test.mjs
+=== ① 主题 tinted() 各档位平均色（修复后应逐档变化）===
+f=0 → 平均色 (48,48,47)
+   f=0.3 → 平均色 (33,33,33)
+   f=0.6 → 平均色 (19,19,19)
+   f=1 → 平均色 (0,0,0)
+
+=== ② 点击第一个磁带外壳，抓过渡帧 ===
+  命中区中心: EXC dx is not defined
+<anonymous_script>:1
+EXC dx is not defined
+^
+
+SyntaxError: Unexpected token 'E', "EXC dx is "... is not valid JSON
+    at JSON.parse (<anonymous>)
+    at file:///D:/AgentTestLab/RhinE-UI/.dev/tape-fade-test.mjs:56:27
+
+Node.js v26.7.0
+[chrome-run] 已关闭无头 Chrome
