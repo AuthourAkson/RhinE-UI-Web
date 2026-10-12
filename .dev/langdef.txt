@@ -1,0 +1,20 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/lang-default.mjs
+localStorage 里的设置: {
+ "scheme": "archive",
+ "mode": "dark",
+ "view": "archive",
+ "archiveLayout": "array",
+ "archiveSort": "artist",
+ "archiveGroup": "genre",
+ "caseSkin": "white",
+ "archiveUnit": "albums",
+ "archiveSel": "{\"key\":\"|d:\\\\musiclab\"}",
+ "seed": 1
+}
+主题 UI_LANG: zh-CN
+主题读到的设置 uiLang: （缺省）
+HUD 按钮: 拾取元素 / 隐藏
+档案页空态文案（应为英文）: 没有专辑 · 媒体库和播放列表都是空的
+首选项标题: PREFERENCES · 网页版首选项
+已存 .dev/default-en.png
+[chrome-run] 已关闭无头 Chrome

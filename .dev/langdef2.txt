@@ -1,0 +1,10 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/lang-default2.mjs
+清空 localStorage（模拟全新访客）…
+清单里的默认设置是否已含 uiLang: { "uiLang": "en", "scheme": "archive", "mode": "dark", "view": "archive", "archiveLayout":
+
+主题 UI_LANG: en
+主题读到的 uiLang: en
+HUD 按钮: 拾取元素 / 隐藏
+导航标签（英文应为 ARCHIVE/PLAYLISTS/…）: archive · playlists · lyrics · signal · style
+已存 .dev/default-en.png
+[chrome-run] 已关闭无头 Chrome

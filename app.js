@@ -174,14 +174,22 @@ function startDemoPoll() {
  */
 const HOST_LANGS = ['en', 'zh-CN', 'ja'];
 function hostLang() {
-  let sys = String((navigator.languages && navigator.languages[0]) || navigator.language || 'en').toLowerCase();
-  sys = /^zh-(tw|hk|mo|hant)/.test(sys) ? 'zh-CN' : /^zh/.test(sys) ? 'zh-CN'
-    : (['ja', 'ko', 'de', 'fr'].includes(sys.split('-')[0]) ? sys.split('-')[0] : 'en');
+  // ⚠️ 必须与主题 getSetting('uiLang', 系统语言) **完全同序**，否则同一界面里两种语言：
+  //    localStorage 覆盖层 → 仓库默认设置文件（清单里的 audio-archive-settings.json）→ 系统语言。
+  //    之前只看了第一层，于是"默认改成英文"之后主题是英文、宿主的 HUD 还是中文（实测）。
   try {
     const raw = localStorage.getItem('rhine:file:audio-archive-settings.json');
     const set = raw ? String(JSON.parse(raw).uiLang || '') : '';
     if (HOST_LANGS.includes(set)) return set;
   } catch (e) { }
+  try {
+    const def = manifest && manifest.text && manifest.text['audio-archive-settings.json'];
+    const set = def ? String(JSON.parse(def).uiLang || '') : '';
+    if (HOST_LANGS.includes(set)) return set;
+  } catch (e) { }
+  let sys = String((navigator.languages && navigator.languages[0]) || navigator.language || 'en').toLowerCase();
+  sys = /^zh-(tw|hk|mo|hant)/.test(sys) ? 'zh-CN' : /^zh/.test(sys) ? 'zh-CN'
+    : (['ja', 'ko', 'de', 'fr'].includes(sys.split('-')[0]) ? sys.split('-')[0] : 'en');
   return HOST_LANGS.includes(sys) ? sys : 'en';
 }
 const HOST_I18N = {
@@ -460,6 +468,7 @@ async function main() {
   log('读取清单…');
   manifest = await (await fetch('/__manifest.json')).json();
   log(`清单：${Object.keys(manifest.text).length} 个文本 / ${Object.keys(manifest.images).length} 张图尺寸`);
+  applyHostLang();   // 清单到手后再定一次语言：默认值就在清单内联的 audio-archive-settings.json 里
   await preloadFonts();
 
   // 1) 子面板（顺序必须与 frame.js 的 CHILDREN 一致）
