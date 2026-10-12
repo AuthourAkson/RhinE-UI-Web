@@ -200,7 +200,20 @@
         const el = img && img.__el ? img.__el : img;
         if (!el || !img.__ready) return;
         const prevAlpha = ctx.globalAlpha;
-        if (alpha != null) ctx.globalAlpha = prevAlpha * clamp(alpha, 0, 1);
+        // ⚠️⚠️ alpha 的量纲是 **0..255**（D2D/JSplitter 约定），不是 0..1。
+        //    主题到处这么用：quadImage(gr, img, q, ox, oy, k, alpha = 255)，
+        //    以及 archive.js 选中时的交叉淡入淡出：
+        //        const cl = clamp(it.c.clear.x, 0, 1);                       // 连续弹簧值
+        //        if (cl < .99) DrawImage(I.frost, …, Math.round(alpha * (1 - cl)));   // frost 淡出
+        //        if (cl > .01) DrawImage(I.clear, …, Math.round(alpha * cl));         // clear 淡入
+        //    之前这里写的是 clamp(alpha, 0, 1) —— 任何 ≥1 的值都被夹成 1（全不透明）→
+        //    过渡中间 frost 和 clear **同时完全不透明**，clear 直接盖住 frost：
+        //    表现为"先白色蒙霜，卡一下直接变黑"（用户实测"选中时的渐变"没了）。
+        //    现在：>1 的一律按 0..255 换算，≤1 的仍按 0..1（两种调用都照顾到）。
+        if (alpha != null) {
+          const a = Number(alpha) || 0;
+          ctx.globalAlpha = prevAlpha * (a > 1.001 ? clamp(a / 255, 0, 1) : clamp(a, 0, 1));
+        }
         // 源矩形以"逻辑像素"给出（img.Width/Height 也是逻辑值）：CreateImage 的层后备被放大了
         // __dpr 倍，所以源坐标要乘回去，否则会只取到左上角 1/__dpr（实测症状：淡出色卡只剩一角）
         const sd = img.__dpr || 1;
