@@ -81,6 +81,67 @@ function onHudKey(e) {
   }
 }
 
+/* --------------------------------------------------- 内置 demo 曲库的入口按钮 --
+ * 主题的档案页在"空库空态"会画一个 `+ ADD MUSIC FOLDER`（archive.js:762，条件 LIB.live && !LIB.filter），
+ * 命中区名 ar-addmusic。我们想在它**下方**再放一个「载入默认音乐 Demo」——
+ * 但主题 JS 必须与原版逐字节一致（不能改它加按钮），所以由宿主在**顶层文档**画一个
+ * 位置跟随 ar-addmusic 的浮层按钮：
+ *   · 轮询 stage 面板的 STATE.view 与 hits.get('ar-addmusic')
+ *   · 只有档案视图 + 空库空态（那个命中区存在）时才显示 —— 与主题自己的入口同生共死
+ *   · 颜色/字号取自主题的 tokens（C.fg / C.bg / AR_ST.btn），所以深浅色自动一致
+ */
+let demoBtn = null, demoPoll = 0;
+function argbToCss(v) {
+  const n = Number(v) >>> 0;
+  return `rgb(${(n >>> 16) & 255},${(n >>> 8) & 255},${n & 255})`;
+}
+function ensureDemoBtn() {
+  if (demoBtn) return demoBtn;
+  demoBtn = document.createElement('button');
+  demoBtn.id = 'rhine-demo-btn';
+  demoBtn.style.cssText = 'position:absolute;z-index:2147482000;display:none;cursor:pointer;border:0;'
+    + 'font-family:"Geist Mono","Microsoft YaHei UI",monospace;letter-spacing:.14em;font-weight:600;'
+    + 'padding:0 18px;white-space:nowrap';
+  demoBtn.onclick = () => {
+    log(ht('Loading the built-in demo library…'));
+    loadHttpLibrary().catch((e) => log(ht('Loading the demo library failed: {0}', e.message)));
+  };
+  document.body.appendChild(demoBtn);
+  return demoBtn;
+}
+function updateDemoBtn() {
+  const btn = ensureDemoBtn();
+  const stage = PANELS.find((p) => p.__id === 'stage');
+  const w = stage && stage.__frame && stage.__frame.contentWindow;
+  if (!w || getComputedStyle(stage.__frame).display === 'none') { btn.style.display = 'none'; return; }
+  let info = null;
+  try {
+    info = w.eval(`(function(){
+      try {
+        if (typeof STATE === "undefined" || STATE.view !== "archive") return null;
+        var h = hits.get("ar-addmusic");
+        if (!h) return null;
+        return JSON.stringify({ h: h, fg: C.fg, bg: C.bg, size: (typeof stSize === "function") ? stSize(AR_ST.btn) : 13 });
+      } catch (e) { return null; }
+    })()`);
+  } catch (e) { info = null; }
+  if (!info) { btn.style.display = 'none'; return; }
+  const d = JSON.parse(info);
+  const r = stage.__frame.getBoundingClientRect();
+  btn.textContent = ht('+ LOAD DEMO LIBRARY');
+  btn.style.left = Math.round(r.left + d.h.x) + 'px';
+  btn.style.top = Math.round(r.top + d.h.y + d.h.h + 10) + 'px';
+  btn.style.height = Math.round(d.h.h) + 'px';
+  btn.style.background = argbToCss(d.fg);        // 与主题的实心按钮一致：前景色底 + 底色文字
+  btn.style.color = argbToCss(d.bg);
+  btn.style.fontSize = Math.max(10, Math.round(d.size)) + 'px';
+  btn.style.display = 'block';
+}
+function startDemoPoll() {
+  clearInterval(demoPoll);
+  demoPoll = setInterval(() => { try { updateDemoBtn(); } catch (e) { } }, 400);
+}
+
 /* ------------------------------------------------------- 宿主自己的界面文案 --
  * 主题的界面语言存在设置文件里（uiLang，由菜单 › Audio Archive › Language 切换）。
  * 宿主自己画的东西（网页版首选项、HUD 按钮、底部状态行）也必须跟随它，
@@ -155,6 +216,8 @@ const HOST_I18N = {
     'Library indexed: {0} tracks / {1} albums ({2} ms)': '曲库解析完成：{0} 首 / {1} 张专辑（解析 {2} ms）',
     'HTTP library: {0} files': 'HTTP 曲库：{0} 个文件',
     'Loading the demo library failed: {0}': '加载演示曲库失败：{0}',
+    'Loading the built-in demo library…': '正在载入内置 demo 曲库…',
+    '+ LOAD DEMO LIBRARY': '+ 载入默认音乐 Demo',
     'Playing: {0}': '播放：{0}',
     'Playback failed: {0} (the browser may not support this format)': '播放失败：{0}（浏览器可能不支持该格式）',
     'Choosing a folder was cancelled': '已取消选择目录',
@@ -348,6 +411,7 @@ function bootPanel(p, entry, extra = {}) {
 async function main() {
   applyHostLang();                     // HUD 按钮文案跟随主题的界面语言
   onKeyEverywhere(onHudKey);           // Alt+H 唤回左下角状态条（加载完会自动隐藏）
+  startDemoPoll();                     // 空库空态时在「+ ADD MUSIC FOLDER」下方挂内置 demo 入口
   log('读取清单…');
   manifest = await (await fetch('/__manifest.json')).json();
   log(`清单：${Object.keys(manifest.text).length} 个文本 / ${Object.keys(manifest.images).length} 张图尺寸`);

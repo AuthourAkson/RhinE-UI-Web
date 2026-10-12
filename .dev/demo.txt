@@ -1,0 +1,20 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/demo-test.mjs
+=== demo 按钮（空库空态下应出现在 ADD MUSIC FOLDER 下方）===
+{"文案":"+ 载入默认音乐 Demo","display":"block","位置":"532,514","尺寸":"168x40","底色":"rgb(242, 240, 234)","文字色":"rgb(11, 11, 11)"}
+主题侧 ADD 命中区: {"id":"ar-addmusic","x":532,"y":391,"w":140,"h":40}
+
+=== 点击 demo 按钮 ===
+宿主曲库: {"source":"http","files":8,"tracks":8}
+状态行: 曲库解析完成：8 首 / 2 张专辑（解析 240 ms）
+主题侧: {"live":true,"albums":2}
+
+=== 播放二创那首并拖动进度条（Range）===
+二创曲目下标: 0
+路径: D:\musiclab\迷迭香-world.execute (me) ;-Mili.mp3
+同名 .lrc 探测: skip
+拖动前 5.9s → 设为 60s → 实际 62.51s  ✓ Range 生效（没有跳回 0）
+音频请求（应出现 206 与 content-range）:
+    {"url":"%E8%BF%B7%E8%BF%AD%E9%A6%99-","status":206,"range":"","len":""}
+    {"url":"%E8%BF%B7%E8%BF%AD%E9%A6%99-","status":200,"range":"","len":""}
+已存 .dev/demo-loaded.png
+[chrome-run] 已关闭无头 Chrome

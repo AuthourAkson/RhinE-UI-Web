@@ -26,6 +26,20 @@ http.createServer((req, res) => {
     res.writeHead(404); return res.end('404');
   }
   const type = MIME[path.extname(file).toLowerCase()] || 'application/octet-stream';
-  res.writeHead(200, { 'Content-Type': type, 'Content-Length': fs.statSync(file).size, 'Accept-Ranges': 'bytes' });
+  const size = fs.statSync(file).size;
+  // Range：线上由 worker/src/worker.js 实现（Workers 静态资源本身不处理 Range），
+  // 本地验证服务器也实现一份，才能测出真实的"拖动进度条"体验。
+  const m = req.headers.range && /^bytes=(\d*)-(\d*)$/.exec(String(req.headers.range).trim());
+  if (m) {
+    const start = m[1] === '' ? Math.max(0, size - Number(m[2])) : Number(m[1]);
+    const end = m[2] === '' ? size - 1 : Math.min(Number(m[2]), size - 1);
+    if (!(start >= 0) || start > end || start >= size) { res.writeHead(416, { 'Content-Range': `bytes */${size}` }); return res.end(); }
+    res.writeHead(206, {
+      'Content-Type': type, 'Accept-Ranges': 'bytes',
+      'Content-Range': `bytes ${start}-${end}/${size}`, 'Content-Length': end - start + 1,
+    });
+    return fs.createReadStream(file, { start, end }).pipe(res);
+  }
+  res.writeHead(200, { 'Content-Type': type, 'Content-Length': size, 'Accept-Ranges': 'bytes' });
   fs.createReadStream(file).pipe(res);
 }).listen(PORT, () => console.log(`dist → http://127.0.0.1:${PORT}/  (${ROOT})`));

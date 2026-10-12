@@ -1,0 +1,20 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/live-demo.mjs
+demo 按钮: {"文案":"+ 载入默认音乐 Demo","display":"block","位置":"532,514"}
+
+点击 demo 按钮…
+宿主曲库: {"source":"http","files":8,"tracks":8}
+状态行: 曲库解析完成：8 首 / 2 张专辑（解析 107 ms）
+主题侧: {"live":true,"albums":2}
+
+二创曲目下标: 0 路径: D:\musiclab\迷迭香-world.execute (me) ;-Mili.mp3
+同名 .lrc 是否被识别: {"推导路径":"D:\\musiclab\\迷迭香-world.execute (me) ;-Mili.lrc","IsFile":true,"字节数":3849,"首行":"[ar:Mili]\r"}
+
+拖动进度条：6.9s → 设 60s → 实际 63.02s  ✓ Range 生效
+音频响应：
+    {"s":206,"cr":"","ar":"bytes","url":"迷迭香-world.execute (me) ;-M"}
+    {"s":200,"cr":"","ar":"bytes","url":"迷迭香-world.execute (me) ;-M"}
+歌词模块状态: {"state":""}
+
+控制台错误: 0 []
+已存 .dev/live-demo.png
+[chrome-run] 已关闭无头 Chrome

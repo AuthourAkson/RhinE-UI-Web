@@ -1,25 +1,26 @@
-# RhinE-UI 的 Cloudflare Worker 配置（纯静态资源）
+# RhinE-UI 的 Cloudflare Worker 配置
 #
-# 为什么是「只有 assets、没有 main」：
-#   官方文档（workers/static-assets/billing-and-limitations）明确写：
-#     "Requests to static assets are free and unlimited."
-#     "When using run_worker_first, requests matching the specified patterns will always
-#      invoke your Worker script. If you exceed your free tier request limits, these requests
-#      will receive a 429 instead of falling back to static asset serving."
-#   → 不配 main、不用 run_worker_first，就等于**每一个请求都走静态资源**：
-#     免费、不限量、也不消耗每日 10 万次的 Worker 请求额度。这正是「省 Cloudflare 额度」的最优解。
-#   → 也因为没有 Worker 脚本，扫描器打不存在的路径不会产生脚本调用（走 not_found_handling）。
+# 额度要点（官方文档 workers/static-assets/billing-and-limitations）：
+#   "Requests to static assets are free and unlimited."
+#   "When using run_worker_first, requests matching the specified patterns will always
+#    invoke your Worker script. If you exceed your free tier request limits, these requests
+#    will receive a 429 instead of falling back to static asset serving."
+#   → 只有 /musiclab/*（内置 demo 音乐）走 Worker 脚本（为了补 Range），这部分**计入**每日
+#     10 万次额度；其余全部请求仍由静态资源层直接返回 —— 依然**免费且不限量**。
+#     不这样做的话音频"拖不动进度条"（Workers 静态资源不处理 Range，见 skill 的 H 节）。
 #
-# 静态文件来自 ../dist（由 node build-static.mjs 生成，含构建期清单、_headers、_redirects）。
+# 静态文件来自 ../dist（由 node build-static.mjs 生成，含构建期清单、demo 曲库索引）。
 
 name = "rhine-ui"
+main = "src/worker.js"
 compatibility_date = "2026-10-11"
 
 [assets]
 directory = "../dist"
+binding = "ASSETS"
+# 只让 demo 音乐进 Worker（自己实现 Range）；其余请求不调用脚本。
+run_worker_first = ["/musiclab/*"]
 # 404-page：不存在的路径返回静态 404，不调用 Worker 脚本 —— 扫描器刷 /\.env 之类路径零成本。
-# （对照：drawmusic 那套用 not_found_handling="none" + 边缘规则，是因为它有 /api/* 要做。
-#   本站在浏览器里完成全部逻辑，没有后端接口，所以用最省额度的这一档。）
 not_found_handling = "404-page"
 
 # 自定义域名：部署时自动创建域名绑定 + DNS 记录 + 证书（Universal SSL 覆盖一级子域）。

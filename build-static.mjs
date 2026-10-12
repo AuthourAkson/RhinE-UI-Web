@@ -30,11 +30,21 @@ const KEEP = argv.reduce((acc, a, i) => (a === '--keep' && argv[i + 1] ? acc.con
  * 根目录的本地脚本（启动器、本地服务器）
  */
 const EXCLUDE = [
-  '.dev', 'image', 'musiclab', 'node_modules',
+  '.dev', 'image', 'node_modules',
   'serve.mjs', 'build-static.mjs', 'README.md', '.gitignore',
   '启动 RhinE-UI.cmd', '停止 RhinE-UI.cmd',          // 本机启动器，线上没意义
   ...KEEP.map((k) => k),
 ];
+
+/* ------------------------------------------------------------ 内置 demo 曲库 --
+ * 把 musiclab/ 一起发上去当"默认音乐"，让访客不用先选目录就能快速体验。
+ * 额度上不用担心：静态资源请求免费且不限量（见 wrangler.toml 顶部说明）。
+ * 唯一要额外做的是 Range —— Workers 静态资源不处理 Range，音频拖不动进度条，
+ * 所以 worker/src/worker.js 给 /musiclab/* 自己实现了 Range。
+ * --no-demo 可以关掉（此时 musiclab/ 像以前一样被排除）。
+ */
+const DEMO = !argv.includes('--no-demo');
+if (!DEMO) EXCLUDE.push('musiclab');
 
 /* ------------------------------------------------------- 开场影片：只发一套 --
  * assets/intro/<皮肤>/ 是预渲染影片（每套 145 张 JPEG，12.6~17.2 MB），10 套共 144.6 MB ——
@@ -63,7 +73,12 @@ fs.rmSync(OUT, { recursive: true, force: true });
 fs.mkdirSync(OUT, { recursive: true });
 
 console.log('扫描并生成清单…');
-const m = buildManifest({ exclude: EXCLUDE, root: '' });
+// ⚠️ root 用 "D:/" 而不是空串：内置 demo 曲库给主题的路径是 `D:\musiclab\…`
+//    （必须用反斜杠 —— 主题的 albumDir()/albumKeyOf() 按 `\` 切分路径分组），
+//    而清单的键是仓库相对路径 `musiclab/…`。shim 的 norm() 会剥掉 MANIFEST.root 前缀，
+//    所以这里把 root 设成 "D:/"，`D:\musiclab\x.lrc` 就正好归一化成 `musiclab/x.lrc` 命中清单。
+//    主题自己的路径（themes/…）不以 D:/ 开头，不受影响。
+const m = buildManifest({ exclude: EXCLUDE, root: 'D:/' });
 const manifestJson = JSON.stringify(m);
 
 let copied = 0, copiedBytes = 0;
@@ -76,6 +91,39 @@ for (const rel of m.files) {
   copiedBytes += fs.statSync(from).size;
 }
 fs.writeFileSync(path.join(OUT, '__manifest.json'), manifestJson);
+
+/* ------------------------------------------------- 内置 demo 曲库索引 __music.json --
+ * 本地开发时这份是 serve.mjs 现算的；静态站没有 Node，所以构建期写死。
+ * 形状与本地完全一致（{ path, url, size }），宿主 app.js 的 loadHttpLibrary() 原样能用。
+ * path 用 `D:\musiclab\<名字>`：配合上面的 root="D:/" 归一化成清单键，于是
+ * 同目录同名的 .lrc 歌词（清单里已内联）能被主题的 utils.IsFile/ReadTextFile 命中。
+ */
+const AUDIO_EXT_BUILD = new Set(['.mp3', '.flac', '.m4a', '.ogg', '.oga', '.opus', '.wav', '.aac']);
+let demoFiles = 0, demoBytes = 0;
+if (DEMO) {
+  const musicDir = path.join(PROJECT_ROOT, 'musiclab');
+  if (fs.existsSync(musicDir)) {
+    const list = [];
+    const walkMusic = (dir, rel) => {
+      for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, ent.name);
+        const r = rel ? rel + '\\' + ent.name : ent.name;
+        if (ent.isDirectory()) { walkMusic(full, r); continue; }
+        if (!AUDIO_EXT_BUILD.has(path.extname(ent.name).toLowerCase())) continue;
+        const size = fs.statSync(full).size;
+        list.push({
+          path: 'D:\\musiclab\\' + r,                                   // 主题按 `\` 切分路径分组
+          url: '/musiclab/' + r.split('\\').map(encodeURIComponent).join('/'),
+          size,
+        });
+        demoFiles++; demoBytes += size;
+      }
+    };
+    walkMusic(musicDir, '');
+    list.sort((a, b) => a.path.localeCompare(b.path));
+    fs.writeFileSync(path.join(OUT, '__music.json'), JSON.stringify(list));
+  }
+}
 
 /* ------------------------------------------------------------------ 缓存策略 --
  * 主题目录与原版 1.4.0 **逐字节一致**，可以放心 immutable 一年 —— 体积的 95% 都在这里

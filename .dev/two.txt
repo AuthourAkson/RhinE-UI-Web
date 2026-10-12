@@ -1,0 +1,6 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/two-buttons.mjs
+主题 ADD 命中区(stage 内): {"id":"ar-addmusic","x":532,"y":391,"w":140,"h":40}
+demo 按钮: {"display":"block","页面坐标":"532,514","尺寸":"168x40"}
+stage 面板页面坐标: {"left":0,"top":73}
+已存 .dev/two-buttons.png（放大 3 倍）与 .dev/demo-empty.png
+[chrome-run] 已关闭无头 Chrome
