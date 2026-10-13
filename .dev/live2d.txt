@@ -1,0 +1,9 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/live-2d.mjs
+线上 SIGNAL：
+  3d       中心像素=8557  ✓
+  2d       中心像素=11204  ✓
+  classic  中心像素=1442  ✗
+  2d       中心像素=11204  ✓
+
+控制台错误: 0 []
+[chrome-run] 已关闭无头 Chrome

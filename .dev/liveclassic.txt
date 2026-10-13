@@ -1,0 +1,6 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/live-classic.mjs
+播放前 classic: 8557 （AUDIO.live = false 播放中 = false ）
+播放中 classic  中心像素=6624   能量=0.281
+播放中 2d       中心像素=11916   能量=0.334
+播放中 3d       中心像素=9523   能量=0.388
+[chrome-run] 已关闭无头 Chrome
