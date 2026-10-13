@@ -1,0 +1,12 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/demo-btn-mobile.mjs
+【手机 844×390】按钮: {"x":259,"y":231,"w":243,"h":19,"visible":"block","vw":844,"vh":390,"inside":true}
+  触摸按钮后曲库文件数: 8
+  手机端错误: 0
+
+【手机竖屏 390×844】按钮: {"x":102,"y":447,"w":243,"h":11,"visible":"block","vw":390,"vh":844,"inside":true}
+  手机竖屏错误: 0
+
+【电脑 1707×899】按钮: {"x":512,"y":514,"w":264,"h":40,"visible":"block","vw":1707,"vh":899,"inside":true}
+  对照（主题命中区 + rect）: {"rect":{"left":0,"top":73,"width":1707},"hit":{"id":"ar-addmusic","x":512,"y":391,"w":180,"h":40}}
+  电脑端错误: 0
+[chrome-run] 已关闭无头 Chrome

@@ -148,13 +148,25 @@ function updateDemoBtn() {
   D.lastHit = true; D.why = '显示';
   const d = JSON.parse(info);
   const r = stage.__frame.getBoundingClientRect();
+  // ⚠️ 手机模式下 #stage 被整体 scale 了（虚拟桌面 1440×820 → 屏幕），而 d.h 是**主题的虚拟坐标**：
+  //    rect 已含缩放、命中区没有 → 不乘缩放的话按钮会跑到屏幕外（用户实测"载入音乐库的按钮超出屏幕"）。
+  //    scale 从「rect 宽 ÷ 主题实际逻辑宽」得到，电脑上恒为 1，因此电脑端逐像素不变。
+  let msc = 1;
+  try {
+    const vw = Number(w.eval('(function(){ try { return W; } catch(e){ return 0; } })()')) || 0;
+    if (vw > 0 && r.width > 0) msc = r.width / vw;
+  } catch (e) { msc = 1; }
+  // 按钮本身不缩放（要保持可点、字号可读），只把锚点换算到屏幕坐标；缩小时给一个可点下限
+  const bw = Math.max(0, btn.offsetWidth || 0);
+  const leftV = r.left + d.h.x * msc;
+  const rightEdge = r.left + r.width;
   btn.textContent = ht('+ LOAD DEFAULT AUDIO LIBRARY');
-  btn.style.left = Math.round(r.left + d.h.x) + 'px';
-  btn.style.top = Math.round(r.top + d.h.y + d.h.h + 10) + 'px';
-  btn.style.height = Math.round(d.h.h) + 'px';
+  btn.style.left = Math.round(Math.min(Math.max(leftV, 4), Math.max(4, rightEdge - bw - 4))) + 'px';
+  btn.style.top = Math.round(r.top + (d.h.y + d.h.h) * msc + 10) + 'px';
+  btn.style.height = Math.max(26, Math.round(d.h.h * Math.min(msc, 1))) + 'px';   // 手机上别挤成一条
   btn.style.background = argbToCss(d.fg);        // 与主题的实心按钮一致：前景色底 + 底色文字
   btn.style.color = argbToCss(d.bg);
-  btn.style.fontSize = Math.max(10, Math.round(d.size)) + 'px';
+  btn.style.fontSize = Math.min(d.size, Math.max(11, Math.round(d.size * Math.min(msc, 1)))) + 'px';
   btn.style.display = 'block';
 }
 function startDemoPoll() {
@@ -510,6 +522,9 @@ async function main() {
     st.style.width = VIEW.w + 'px';
     st.style.height = VIEW.h + 'px';
     st.style.transform = `translate(${mTx}px, ${mTy}px) scale(${mScale})`;
+    // 宿主自绘、按主题坐标锚定的浮层（载入音频库按钮）要跟着这块板子重新定位，
+    // 否则捏合/平移之后会偏到屏幕外。boot 早期 PANELS/函数还未就绪，用 try 兜住。
+    try { updateDemoBtn(); } catch (e) { }
   }
   function clampPan() {
     if (!MOBILE) return;
