@@ -1,0 +1,15 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/scheme-signal-bug.mjs
+可用配色方案: ["archive","hazard","flare","field","front"]
+archive + dark 中心像素: 8557  MODE= dark  SCHEME= archive
+
+archive / light → 中心像素 8819   {"SCHEME":"archive","MODE":"light","accentTurn":0,"ringMode":"day","shadow":"700x450"}
+
+flare / light → 中心像素 499   {"SCHEME":"flare","MODE":"light","accentTurn":-7.477292576419199,"ringMode":"day","shadow":"700x450"}
+
+flare / dark → 中心像素 8506   {"SCHEME":"flare","MODE":"dark","accentTurn":-7.477292576419199,"ringMode":"night","shadow":"无"}
+
+archive / dark → 中心像素 8587   {"SCHEME":"archive","MODE":"dark","accentTurn":0,"ringMode":"night","shadow":"无"}
+
+=== 捕获到的日志（最后 14 条）===
+已存 .dev/scheme-signal.png
+[chrome-run] 已关闭无头 Chrome

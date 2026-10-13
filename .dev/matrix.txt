@@ -1,0 +1,11 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/scheme-matrix.mjs
+配色: archive, hazard, flare, field, front
+  archive  light=8819   dark=8587   ✓
+  hazard   light=10511   dark=8448   ✓
+  flare    light=10846   dark=8506   ✓
+  field    light=10710   dark=8310   ✓
+  front    light=10721   dark=8648   ✓
+
+异常中心像素的组合数: 0  控制台错误: 0 []
+已存 .dev/scheme-matrix.png
+[chrome-run] 已关闭无头 Chrome

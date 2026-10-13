@@ -1,8 +1,9 @@
-[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/archive-search.mjs
-搜索前: {"过滤词":"","专辑数":2,"可见项":2}
-搜 "world" → {"过滤词":"world","专辑数":2,"可见项":2}  播放列表: ["Default Playlist(7)"]
-搜 "mili" → {"过滤词":"mili","专辑数":2,"可见项":2}  播放列表: ["Default Playlist(7)"]
-搜 "zzzz" → {"过滤词":"zzzz","专辑数":2,"可见项":2}  播放列表: ["Default Playlist(7)"]
-搜 "(空)" → {"过滤词":"","专辑数":2,"可见项":2}  播放列表: ["Default Playlist(7)"]
-已存 .dev/archive-search.png
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/accentshift-probe.mjs
+=== accentShift 前后对比（ring 原图 vs 旋转副本）===
+原图 ring: 1400x900  ready=true  不透明采样=4589/23774  平均亮度=38
+   阴影: 700x450  ready=true  不透明采样=0/13373  平均亮度=0
+   accentShift(ring): 1400x900  ready=true  不透明采样=0/53491  平均亮度=0
+   accentShift(阴影): 700x450  ready=true  不透明采样=0/13373  平均亮度=0
+   accentEffect(ring) = 有  矩阵前 4 个值: 1.021, -0.017, 0.104, 0.099
+   手动 DrawEffect 结果: 1400x900  ready=true  不透明采样=0/53491  平均亮度=0
 [chrome-run] 已关闭无头 Chrome

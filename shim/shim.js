@@ -238,18 +238,42 @@
         ctx.globalAlpha = prevAlpha;
       },
       DrawEffect(fx, x, y, w, h, srcW, srcH) {
-        if (!fx || !fx.__input || !fx.__input.__ready) return;
+        if (!fx || !fx.__input) return;
         const dw = w || srcW || fx.__input.Width, dh = h || srcH || fx.__input.Height;
-        const src = sourceCanvas(fx.__input);
         // ⚠️⚠️ 主题的两处 Effect 都是 **5×4 颜色矩阵**，不是色相滤镜：
         //   archive.js tinted()  把 frost 按 f 向背景色淡出（k=1-f 缩放 + r*f,g*f,b*f 偏移）
         //   draw.js   hueMatrix() 配色方案的色相旋转（同一套矩阵机制）
         // 之前我把它当成色相旋转、用 CSS hue-rotate 近似 —— 于是 tinted() 的 10 个 f 档位
         // 渲染出来**完全一样** → 选中磁带时不是"逐渐虚化"，而是最后一帧直接切成 clear，
         // 看着就是"磁带画面中间突然变色"（用户实测）。现在逐像素按矩阵算。
-        const img = (fx.__m && src) ? colourMatrix(src, fx.__m) : src;
-        if (!img) return;
-        ctx.drawImage(img, 0, 0, img.width, img.height, x, y, dw, dh);
+        const shape = () => {
+          const src = sourceCanvas(fx.__input);
+          if (!src) return false;
+          const img = fx.__m ? colourMatrix(src, fx.__m) : src;
+          if (!img) return false;
+          ctx.drawImage(img, 0, 0, img.width, img.height, x, y, dw, dh);
+          return true;
+        };
+        if (shape()) return;
+        // ⚠️ 图还没加载完（sourceCanvas 返回 null）：**不能就这么算了**。
+        //    主题的 accentShift() 会把这次的结果缓存起来（ACCENT_CACHE），
+        //    不补画的话那张"空副本"就被永久固化 —— 正是"非 archive 配色 + light 时
+        //    SIGNAL 中心环管线消失"的成因。这里等它 load 完再把这一笔画回去，
+        //    并且恢复当时的变换/透明度（补画发生在此刻之外，上下文状态可能已经变了）。
+        const inp = fx.__input;
+        if (inp && inp.__onReady) {
+          const m = ctx.getTransform(), a = ctx.globalAlpha, comp = ctx.globalCompositeOperation;
+          inp.__onReady.push(() => {
+            try {
+              ctx.save();
+              ctx.setTransform(m);
+              ctx.globalAlpha = a;
+              ctx.globalCompositeOperation = comp;
+              if (shape()) { dirty = true; schedule(); }   // 补画成功 → 请求重绘把结果显示出来
+              ctx.restore();
+            } catch (e) { try { ctx.restore(); } catch (e2) { } }
+          });
+        }
       },
 
       /* --- 裁剪 / 变换 --- */
@@ -427,13 +451,20 @@
     const el = handle && handle.__el;
     if (!el) return null;
     if (el.tagName === 'CANVAS') return el;
-    if (handle.__cv) return handle.__cv;
+    // ⚠️⚠️ 图片**还没加载完**时绝不能缓存 —— 之前第一次调用（往往是某一帧的 paint，早于 onload）
+    //    会把一张空画布缓存进 handle.__cv，之后永远返回空的。
+    //    症状：非 archive 配色 + light 模式时 SIGNAL 中心的环管线整块消失
+    //    （draw.js 的 accentShift() 用 CreateImage + DrawEffect 生成"色相旋转副本"，
+    //     源是空的 → 副本全透明 → 主题又把它缓存进 ACCENT_CACHE → 永久空白）。
+    if (handle.__cvFor === el && handle.__ready) return handle.__cv;
+    if (!handle.__ready) return null;
     const w = el.naturalWidth || el.width || handle.Width || 1;
     const h = el.naturalHeight || el.height || handle.Height || 1;
     const cv = document.createElement('canvas');
     cv.width = Math.max(1, w); cv.height = Math.max(1, h);
     cv.getContext('2d').drawImage(el, 0, 0, cv.width, cv.height);
     handle.__cv = cv;
+    handle.__cvFor = el;
     return cv;
   }
   /**
