@@ -156,17 +156,24 @@ function updateDemoBtn() {
     const vw = Number(w.eval('(function(){ try { return W; } catch(e){ return 0; } })()')) || 0;
     if (vw > 0 && r.width > 0) msc = r.width / vw;
   } catch (e) { msc = 1; }
-  // 按钮本身不缩放（要保持可点、字号可读），只把锚点换算到屏幕坐标；缩小时给一个可点下限
+  // 按钮要与**主题自己那个"加入本地文件夹"按钮完全同尺寸**：
+  //   主题的按钮画在画布上，会跟着 #stage 一起缩放（手机上是 40×0.476 ≈ 19px 高）；
+  //   宿主这个按钮在顶层文档里、不随板子缩放 —— 所以高度/字号/内边距/字距都要按同一个比例换算，
+  //   否则就是"位置对、大小不对"（用户实测）。这里不再留"最小 26px / 字号 11px"的保底：
+  //   保底会让它比主题按钮大一截。放大靠双指缩放（整块板子变大，本函数会被重新调用）。
+  const k = msc;
   const bw = Math.max(0, btn.offsetWidth || 0);
-  const leftV = r.left + d.h.x * msc;
+  const leftV = r.left + d.h.x * k;
   const rightEdge = r.left + r.width;
   btn.textContent = ht('+ LOAD DEFAULT AUDIO LIBRARY');
   btn.style.left = Math.round(Math.min(Math.max(leftV, 4), Math.max(4, rightEdge - bw - 4))) + 'px';
-  btn.style.top = Math.round(r.top + (d.h.y + d.h.h) * msc + 10) + 'px';
-  btn.style.height = Math.max(26, Math.round(d.h.h * Math.min(msc, 1))) + 'px';   // 手机上别挤成一条
+  btn.style.top = Math.round(r.top + (d.h.y + d.h.h) * k + 10 * Math.min(k, 1)) + 'px';
+  btn.style.height = Math.round(d.h.h * k) + 'px';
+  btn.style.padding = `0 ${Math.round(18 * k)}px`;
+  btn.style.letterSpacing = (0.14 * k).toFixed(3) + 'em';
   btn.style.background = argbToCss(d.fg);        // 与主题的实心按钮一致：前景色底 + 底色文字
   btn.style.color = argbToCss(d.bg);
-  btn.style.fontSize = Math.min(d.size, Math.max(11, Math.round(d.size * Math.min(msc, 1)))) + 'px';
+  btn.style.fontSize = (d.size * k).toFixed(2) + 'px';
   btn.style.display = 'block';
 }
 function startDemoPoll() {
