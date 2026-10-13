@@ -1,0 +1,11 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/live-mobile.mjs
+线上横屏 #stage: 1440pxx820px  → 685x390  translate(79.561px, 0px) scale(0.47561)
+面板几何: ["header:685x35","transport:685x46","stage:685x310","root:685x390","undefined:1x1"]
+stage 画布: 2055x929
+mode 命中区: {"x":694.0487816704643,"y":353.8536563449436,"data":"light"}  MODE 前 = dark
+触摸后 MODE = light ✓
+
+线上竖屏 #stage: translate(0px, 310.958px) scale(0.270833)  → 390x222
+控制台错误: 0 []
+已存 .dev/live-mobile-landscape.png / live-mobile-light.png / live-mobile-portrait.png
+[chrome-run] 已关闭无头 Chrome
