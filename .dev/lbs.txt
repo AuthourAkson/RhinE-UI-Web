@@ -1,0 +1,5 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/live-btn-size.mjs
+【线上手机 844×390】 {"缩放":0.4756,"主题":{"h":19,"font":5.23},"宿主":{"h":19,"font":"5.23px","pad":"0px 9px","inside":true}}
+【线上电脑 1707×899】 {"缩放":1,"主题":{"h":40,"font":11},"宿主":{"h":40,"font":"11px","pad":"0px 18px","inside":true}}
+控制台错误: 0 []
+[chrome-run] 已关闭无头 Chrome
