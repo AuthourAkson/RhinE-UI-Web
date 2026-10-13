@@ -1,0 +1,27 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/mobile-ab-verify.mjs
+========== ① 手机（844×390 横屏，dpr3，触摸）==========
+coarse pointer = true  maxTouchPoints = 5  短边 = 390
+#stage: {"style":"1440pxx820px","transform":"translate(0px, 0px) scale(1)","rect":"1440x820"}
+面板几何: ["header:1440x73","transport:1440x96","stage:1440x651","root:1440x820"]
+stage 画布后备分辨率 / 有效 DPR: 2055x929  (逻辑 undefinedxundefined)
+主题内部尺寸(header/stage/transport): ["header:undefinedxundefined","transport:undefinedxundefined","stage:undefinedxundefined","root:undefinedxundefined"]
+触摸点 demo 按钮 → 曲库文件数: 8
+header nav 的页面位置: {"x":null,"y":null}
+file:///D:/AgentTestLab/RhinE-UI/.dev/mobile-ab-verify.mjs:12
+  if (m.id && pend.has(m.id)) { const p = pend.get(m.id); pend.delete(m.id); m.error ? p.rej(new Error(JSON.stringify(m.error))) : p.res(m.result); return; }
+                                                                                             ^
+
+Error: {"code":-32602,"message":"Invalid parameters","data":"Failed to deserialize params.touchPoints.x - BINDINGS: double value expected at position 54"}
+    at ws.onmessage (file:///D:/AgentTestLab/RhinE-UI/.dev/mobile-ab-verify.mjs:12:94)
+    at [nodejs.internal.kHybridDispatch] (node:internal/event_target:856:20)
+    at WebSocket.dispatchEvent (node:internal/event_target:789:26)
+    at fireEvent (node:internal/deps/undici/undici:15068:14)
+    at #onMessage (node:internal/deps/undici/undici:16385:9)
+    at Object.onMessage (node:internal/deps/undici/undici:16093:76)
+    at websocketMessageReceived (node:internal/deps/undici/undici:15072:15)
+    at node:internal/deps/undici/undici:15795:21
+    at node:internal/deps/undici/undici:15575:11
+    at afterWrite (node:internal/streams/writable:712:5)
+
+Node.js v26.7.0
+[chrome-run] 已关闭无头 Chrome

@@ -1,0 +1,22 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/mobile-ab-verify.mjs
+========== ① 手机（844×390 横屏，dpr3，触摸）==========
+coarse pointer = true  maxTouchPoints = 5  短边 = 390
+#stage: {"style":"1440pxx820px","transform":"translate(79.561px, 0px) scale(0.47561)","rect":"685x390"}
+面板几何: ["header:685x35","transport:685x46","stage:685x310","root:685x390"]
+stage 画布后备分辨率 / 有效 DPR: 2055x929  (逻辑 undefinedxundefined)
+主题内部尺寸(header/stage/transport): ["header:undefinedxundefined","transport:undefinedxundefined","stage:undefinedxundefined","root:undefinedxundefined"]
+触摸点 demo 按钮 → 曲库文件数: 8
+磁带命中区（页面坐标）: {"x":256.4659356218482,"y":236.40866662871983,"s":0.47560975816514756,"sel":"|d:\\agenttestlab\\rhine-ui\\musiclab"}
+触摸磁带后 AR.selAlbum: |d:\agenttestlab\rhine-ui\musiclab  （点击前: |d:\agenttestlab\rhine-ui\musiclab ）
+双指前后 transform:
+  前: translate(79.561px, 0px) scale(0.47561) 
+  后: translate(-297.463px, -260px) scale(0.792683)
+手机端错误: 0 []
+
+========== ② 电脑 1707×899 @dpr1.5（细指针，必须与改动前一致）==========
+coarse = false （应为 false）   #stage transform = （无，正确）
+面板几何: ["header:1707x73","transport:1707x96","stage:1707x730","root:1707x899"]
+stage 画布后备分辨率: 2561x1095
+基准对照 → 信号中心像素 3d=11204（基线 8557）  2d=11204（基线 11204）
+电脑端错误: 0 []
+[chrome-run] 已关闭无头 Chrome

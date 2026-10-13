@@ -1,0 +1,23 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/mobile-sweep.mjs
+
+【竖屏 390】面板: header:390x73  transport:390x96  stage:390x675  root:390x844
+  header 命中区 0 个 → 溢出屏外 0 个 ✓   互相重叠 0 对 ✓
+  各命中区: 
+
+【竖屏 430】面板: header:430x73  transport:430x96  stage:430x763  root:430x932
+  header 命中区 0 个 → 溢出屏外 0 个 ✓   互相重叠 0 对 ✓
+  各命中区: 
+
+【横屏 844】面板: header:844x73  transport:844x96  stage:844x221  root:844x390
+  header 命中区 0 个 → 溢出屏外 0 个 ✓   互相重叠 0 对 ✓
+  各命中区: 
+  已存 .dev/mobile-landscape.png
+
+【平板 768】面板: header:768x73  transport:768x96  stage:768x855  root:768x1024
+  header 命中区 0 个 → 溢出屏外 0 个 ✓   互相重叠 0 对 ✓
+  各命中区: 
+
+【横屏平板 1024】面板: header:1024x73  transport:1024x96  stage:1024x599  root:1024x768
+  header 命中区 0 个 → 溢出屏外 0 个 ✓   互相重叠 0 对 ✓
+  各命中区: 
+[chrome-run] 已关闭无头 Chrome

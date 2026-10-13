@@ -1,0 +1,5 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/touch-final.mjs
+命中区: [{"i":1,"cx":371.95402,"cy":424.06437258007963},{"i":0,"cx":323.7763,"cy":403.66828680000003}]  当前选中: |d:\agenttestlab\rhine-ui\musiclab  行内选中下标 r.sel = 0
+只属于未选中那盘的命中点（虚拟坐标）: null
+没扫到独占点（两盘几乎完全重叠）
+[chrome-run] 已关闭无头 Chrome

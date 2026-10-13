@@ -483,10 +483,89 @@ async function main() {
     PANELS.push(p);
   });
 
+  /* ------------------------------------------------- 手机适配（与电脑互斥） --
+   * 背景：主题每个面板内部都是"按宽屏写死的排版"，窄屏会叠字、裁切；
+   *       但 frame.js 的 regions() 完全按 **root 面板的 W/H** 计算。
+   * 所以手机上的做法是：让 root 以 1440×820 的**虚拟尺寸**渲染（排版与桌面逐像素一致），
+   *       再把 #stage 整体 scale 到屏幕里，并支持**双指缩放 / 平移**。
+   *       主题代码一行都不用改，也不需要动 index.html 的样式。
+   * 触发条件刻意收窄：**触摸设备 且 短边 < 700**（即手机）。平板与电脑完全不进这条路，
+   *       因此电脑端的布局、坐标、画布分辨率都不会有任何变化。
+   */
+  const MOBILE = (() => {
+    try {
+      const coarse = (window.matchMedia && matchMedia('(pointer: coarse)').matches) || (navigator.maxTouchPoints || 0) > 0;
+      return !!coarse && Math.min(innerWidth, innerHeight) < 700;
+    } catch (e) { return false; }
+  })();
+  const VIEW = MOBILE ? { w: 1440, h: 820 } : null;
+  const VW = () => (VIEW ? VIEW.w : window.innerWidth);
+  const VH = () => (VIEW ? VIEW.h : window.innerHeight);
+  let mScale = 0, mTx = 0, mTy = 0;
+  const fitScale = () => (VIEW ? Math.min(innerWidth / VIEW.w, innerHeight / VIEW.h) : 1);
+  function applyMobileView() {
+    if (!MOBILE) return;
+    const st = $('#stage'); if (!st) return;
+    st.style.transformOrigin = '0 0';
+    st.style.width = VIEW.w + 'px';
+    st.style.height = VIEW.h + 'px';
+    st.style.transform = `translate(${mTx}px, ${mTy}px) scale(${mScale})`;
+  }
+  function clampPan() {
+    if (!MOBILE) return;
+    const w = VIEW.w * mScale, h = VIEW.h * mScale;
+    mTx = w <= innerWidth ? (innerWidth - w) / 2 : Math.min(0, Math.max(innerWidth - w, mTx));
+    mTy = h <= innerHeight ? (innerHeight - h) / 2 : Math.min(0, Math.max(innerHeight - h, mTy));
+  }
+  function layoutView() {
+    if (!MOBILE) return;
+    // 首次进入必须**用合适值**（mScale 初值 0 → 直接取 fit），之后换方向只保证"不小于合适值"，
+    // 不重置用户已经捏合出来的缩放。
+    mScale = mScale > 0 ? Math.max(mScale, fitScale()) : fitScale();
+    clampPan(); applyMobileView();
+  }
+  if (MOBILE) {
+    // 有效 DPR：让画布刚好匹配"板子缩放后的物理像素"（例 dpr3 × 0.48 ≈ 1.43 —— 比 dpr3 省约 4 倍像素）
+    try { window.__RHINE_DPR__ = Math.min(2, Math.max(1, devicePixelRatio * fitScale())); } catch (e) { }
+    const gdist = (p) => Math.hypot(p[0][0] - p[1][0], p[0][1] - p[1][1]);
+    const gmid = (p) => [(p[0][0] + p[1][0]) / 2, (p[0][1] + p[1][1]) / 2];
+    let s0 = 1, d0 = 0, m0 = [0, 0], t0 = [0, 0];
+    // 双指手势由各面板的 shim postMessage 上来（iframe 里的触摸不会冒泡到父页面）
+    window.addEventListener('message', (e) => {
+      const d = e.data; if (!d || !d.__rhineGesture) return;
+      const pts = d.pts || [];
+      if (d.__rhineGesture === 'start' && pts.length >= 2) {
+        s0 = mScale; d0 = gdist(pts) || 1; m0 = gmid(pts); t0 = [mTx, mTy];
+      } else if (d.__rhineGesture === 'move' && pts.length >= 2 && d0 > 0) {
+        const st = $('#stage'); if (!st) return;
+        const r = st.getBoundingClientRect();
+        const ox = r.left - mTx, oy = r.top - mTy;      // 反推未变换的原点（rect 已含 transform）
+        const bx = (m0[0] - ox - t0[0]) / s0, by = (m0[1] - oy - t0[1]) / s0;
+        const m = gmid(pts);
+        mScale = Math.max(fitScale() * 0.8, Math.min(4, s0 * (gdist(pts) / d0)));
+        mTx = (m[0] - ox) - bx * mScale;
+        mTy = (m[1] - oy) - by * mScale;
+        clampPan(); applyMobileView();
+      }
+    });
+    // 竖屏时给一句轻提示（不阻挡任何操作，4 秒后淡出）
+    if (innerHeight > innerWidth) {
+      const h = document.createElement('div');
+      h.textContent = '横屏显示更完整 · 双指可缩放';
+      h.style.cssText = 'position:fixed;left:50%;top:6px;transform:translateX(-50%);z-index:99999;' +
+        'background:rgba(10,10,12,.9);color:#d8cfc0;border:1px solid #2a2b28;border-radius:14px;' +
+        'padding:4px 12px;font:12px ui-monospace,monospace;pointer-events:none;transition:opacity .6s';
+      document.body.appendChild(h);
+      setTimeout(() => { h.style.opacity = '0'; }, 4000);
+      setTimeout(() => h.remove(), 5200);
+    }
+    layoutView();
+  }
+
   // 2) 根面板（frame.js）：它才是布局的主人，放在最底层
   rootPanel = makePanel('root', 'settings', PANELS.length);
   rootPanel.__frame.style.zIndex = '0';
-  rootPanel.Move(0, 0, window.innerWidth, window.innerHeight);
+  rootPanel.Move(0, 0, VW(), VH());          // 手机 = 虚拟桌面尺寸（1440×820），电脑 = 真实视口
   rootPanel.Show(true);
   PANELS.push(rootPanel);
 
@@ -522,11 +601,14 @@ async function main() {
   }
   // 原生播放列表没有脚本，但要在父页面里注册好（frame.js 会 Move/Show 它）
 
-  window.addEventListener('resize', () => {
-    rootPanel.Move(0, 0, window.innerWidth, window.innerHeight);
+  const relayout = () => {
+    rootPanel.Move(0, 0, VW(), VH());
     const win = rootPanel.__frame.contentWindow;
-    if (win && win.__rhine) win.__rhine.size(window.innerWidth, window.innerHeight);
-  });
+    if (win && win.__rhine) win.__rhine.size(VW(), VH());
+    layoutView();
+  };
+  window.addEventListener('resize', relayout);
+  window.addEventListener('orientationchange', () => setTimeout(relayout, 120));
 
   // 拾取器按钮 + 快捷键（Ctrl+Alt+P）。Alt+点击在任何时候都能直接拾取，不必先开模式
   const pb = $('#pick-btn');

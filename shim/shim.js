@@ -1517,8 +1517,12 @@
   }
 
   function resize(w, h) {
-    const dpr = window.devicePixelRatio || 1;
-    DPR = dpr;                       // 拾取器要按设备像素读颜色（逻辑坐标 × DPR）
+    // 手机模式下宿主会把"有效 DPR"降下来：虚拟桌面 1440×820 再整体 scale 到屏幕上时，
+    // 画布只要匹配**缩放后的物理像素**就够（例 dpr3 × 0.48 ≈ 1.43）—— 比按 dpr3 渲染省约 4 倍像素，
+    // 而且 1:1 不模糊。电脑上 parent.__RHINE_DPR__ 不存在 → dpr 原样，行为完全不变。
+    let dpr = window.devicePixelRatio || 1;
+    try { const cap = Number(parent.__RHINE_DPR__) || 0; if (cap > 0) dpr = cap; } catch (e) { }
+    DPR = dpr;                       // 拾取器也要按设备像素读颜色（逻辑坐标 × DPR）
     W = Math.max(1, Math.round(w)); H = Math.max(1, Math.round(h));
     CANVAS.width = Math.round(W * dpr); CANVAS.height = Math.round(H * dpr);
     CANVAS.style.width = W + 'px'; CANVAS.style.height = H + 'px';
@@ -1709,6 +1713,76 @@
     CANVAS.addEventListener('dblclick', (e) => { const [x, y] = pos(e); ev('on_mouse_lbtn_dblclk', x, y, mask(e)); });
     CANVAS.addEventListener('wheel', (e) => { const [x, y] = pos(e); ev('on_mouse_wheel', -Math.sign(e.deltaY), x, y, mask(e)); }, { passive: true });
     CANVAS.addEventListener('contextmenu', (e) => e.preventDefault());
+
+    /* ---------------------------------------------------------------- 触摸桥接 --
+     * 主题只认鼠标事件，手机上就"点不动"。这里把触摸**翻译成鼠标**，主题一行都不用改：
+     *   · 单指按下 → 先 mousemove 到该点（让 hover / 命中区先算对），再 mousedown(左键)
+     *   · 单指移动 → mousemove（位移超过阈值就取消长按）
+     *   · 抬起     → mouseup(左键)；极短且没动 → 补一次双击判定（300ms 内两次）
+     *   · 长按 500ms 不动 → 右键 up（主题的上下文菜单），这次抬起不再发左键
+     *   · **双指** → 不翻译成鼠标，改为把原始手势（页面坐标）postMessage 给宿主做缩放/平移，
+     *               并且先把已按下的左键补一个 up，避免鼠标状态卡住
+     * 去重：touchstart 里 preventDefault()（监听器要 passive:false），浏览器就不会再补发一套
+     * 兼容 mouse 事件；另外仍用时间戳兜底，防止个别浏览器照发导致"一次点击触发两次"。
+     */
+    const TOUCH = { down: false, moved: false, x: 0, y: 0, t: 0, long: 0, handled: false, lastTap: 0, rbtn: false };
+    const pageXY = (t) => {
+      let r = { left: 0, top: 0 };
+      try { r = CANVAS.getBoundingClientRect(); } catch (e) { }
+      let ox = 0, oy = 0;
+      try { const fe = window.frameElement; if (fe) { const fr = fe.getBoundingClientRect(); ox = fr.left; oy = fr.top; } } catch (e) { }
+      return [ox + r.left + t.clientX, oy + r.top + t.clientY];
+    };
+    const cancelLong = () => { if (TOUCH.long) { clearTimeout(TOUCH.long); TOUCH.long = 0; } };
+    CANVAS.addEventListener('touchstart', (e) => {
+      e.preventDefault();                       // 关键：阻止滚动/缩放与"兼容鼠标事件"的补发
+      if (e.touches.length >= 2) {
+        if (TOUCH.down && !TOUCH.handled) { ev('on_mouse_lbtn_up', TOUCH.x, TOUCH.y, 0); TOUCH.down = false; TOUCH.handled = true; }
+        cancelLong();
+        try { parent.postMessage({ __rhineGesture: 'start', pts: [...e.touches].map(pageXY) }, '*'); } catch (err) { }
+        return;
+      }
+      const t = e.touches[0], [x, y] = pos(t);
+      TOUCH.down = true; TOUCH.moved = false; TOUCH.handled = false; TOUCH.rbtn = false;
+      TOUCH.x = x; TOUCH.y = y; TOUCH.t = performance.now();
+      ev('on_mouse_move', x, y, 0);                                    // 先落 hover，主题的命中区才准
+      ev('on_mouse_lbtn_down', x, y, MK.LBUTTON);
+      cancelLong();
+      TOUCH.long = setTimeout(() => {                                  // 长按 → 右键（上下文菜单）
+        TOUCH.long = 0; TOUCH.handled = true; TOUCH.rbtn = true;
+        if (TOUCH.down) { ev('on_mouse_lbtn_up', TOUCH.x, TOUCH.y, 0); TOUCH.down = false; }
+        try { const r = evRet('on_mouse_rbtn_up', TOUCH.x, TOUCH.y, MK.RBUTTON); } catch (err) { }
+      }, 500);
+    }, { passive: false });
+    CANVAS.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      if (e.touches.length >= 2) {
+        cancelLong();
+        try { parent.postMessage({ __rhineGesture: 'move', pts: [...e.touches].map(pageXY) }, '*'); } catch (err) { }
+        return;
+      }
+      const t = e.touches[0], [x, y] = pos(t);
+      if (Math.abs(x - TOUCH.x) > 8 || Math.abs(y - TOUCH.y) > 8) { TOUCH.moved = true; cancelLong(); }
+      ev('on_mouse_move', x, y, MK.LBUTTON);
+    }, { passive: false });
+    const touchEnd = (e) => {
+      e.preventDefault();
+      if (e.touches.length >= 1) { try { parent.postMessage({ __rhineGesture: 'end' }, '*'); } catch (err) { } return; }
+      cancelLong();
+      try { parent.postMessage({ __rhineGesture: 'end' }, '*'); } catch (err) { }
+      if (TOUCH.handled) { TOUCH.down = false; return; }               // 长按/右键处理过，不再发左键
+      if (TOUCH.down) {
+        ev('on_mouse_lbtn_up', TOUCH.x, TOUCH.y, 0);
+        TOUCH.down = false;
+        const now = performance.now();
+        if (!TOUCH.moved && now - TOUCH.t < 300) {
+          if (now - TOUCH.lastTap < 320) { ev('on_mouse_lbtn_dblclk', TOUCH.x, TOUCH.y, MK.LBUTTON); TOUCH.lastTap = 0; }
+          else TOUCH.lastTap = now;
+        }
+      }
+    };
+    CANVAS.addEventListener('touchend', touchEnd, { passive: false });
+    CANVAS.addEventListener('touchcancel', touchEnd, { passive: false });
     window.addEventListener('keydown', (e) => {
       if (evRet('on_key_down', e.keyCode, 0) === false) e.preventDefault();
       if (e.key && e.key.length === 1) ev('on_char', e.key.charCodeAt(0));

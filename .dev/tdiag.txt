@@ -1,0 +1,9 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/touch-diag.mjs
+虚拟坐标 372 424 → 页面坐标 256 236  缩放 0.4756
+触摸前: AR.hover = -1  AR.hoverTick = -1
+touchStart 后: AR.hover = 0   （≥0 = mousemove 送到了 ✓）
+touchend 后: AR.selAlbum = |d:\agenttestlab\rhine-ui\musiclab
+
+对照（鼠标）移动后: AR.hover = -1   （应该 ≥0）
+对照（鼠标）点击后: AR.selAlbum = |d:\agenttestlab\rhine-ui\musiclab
+[chrome-run] 已关闭无头 Chrome

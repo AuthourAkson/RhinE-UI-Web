@@ -1,0 +1,12 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/mobile-ab-confirm.mjs
+========== ① 手机：触摸第 2 盘磁带 ==========
+缩放比 0.4756  命中区数 2  当前选中: |d:\agenttestlab\rhine-ui\musiclab
+触摸第 2 盘 → 页面坐标 234 227  (原 i=0)
+触摸后 AR.selAlbum = |d:\agenttestlab\rhine-ui\musiclab  → 未变 ✗
+手机端错误: 0
+
+========== ② 电脑：强制 3d 回基线 ==========
+3d=8557（基线 8557）  2d=11204（基线 11204）  classic=5979（基线 5979）
+三项是否都命中基线: **是 ✓ 无回归**
+电脑端错误: 0
+[chrome-run] 已关闭无头 Chrome

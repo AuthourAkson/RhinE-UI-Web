@@ -1,0 +1,18 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/mobile-probe.mjs
+视口: 390x844 @dpr 3
+触摸支持: true / maxTouchPoints=5
+面板几何（CSS）:
+["header:0,0 390x73","transport:0,748 390x96","stage:0,73 390x675","manager:0,0 0x0 hidden","head:0,0 0x0 hidden","playlist:0,0 0x0 hidden","card:0,0 0x0 hidden","tip:0,0 0x0 hidden","fx:0,0 0x0 hidden","root:0,0 390x844"]
+
+主题侧每个面板拿到的尺寸:
+EXC SyntaxError: Invalid regular expression: /:(?|0)x/: Invalid group
+
+画布后备分辨率（前 4 个）:
+["header:1170x219","transport:1170x288","stage:1170x2025","manager:1170x2532"]
+
+导航命中区（header 里 nav 的位置，看会不会挤出屏幕）:
+nav={"id":"nav","x":352,"y":22,"w":104,"h":28,"data":"archive"}  prefs={"id":"prefs","x":263,"y":22,"w":30,"h":28}  menu={"id":"menu","x":307,"y":22,"w":67,"h":28}  clock={"id":"clock","x":106,"y":16,"w":106,"h":36}   navs=?
+
+控制台错误: 0 []
+已存 .dev/mobile-viewport.png
+[chrome-run] 已关闭无头 Chrome

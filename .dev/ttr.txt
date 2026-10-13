@@ -1,0 +1,7 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/touch-transport.mjs
+transport 面板的命中区 id: ruler|{"x0":318,"x1":732,"y":33}  cover|undefined  btn|0  btn|1  btn|2  btn|3  vol|{"x0":863,"w":74}  shuffle|undefined  dsp|undefined  order|undefined  mode|"light"  mode|"dark"
+挑出的可观测目标: ["vol(490,355)","shuffle(549,355)","order(641,355)","mode(695,355)","mode(726,355)"]
+
+① 触摸 mode → 695 355  触摸前 MODE = dark
+   触摸后 MODE = light **变化 ✓✓**
+[chrome-run] 已关闭无头 Chrome
