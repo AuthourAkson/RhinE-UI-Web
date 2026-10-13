@@ -109,8 +109,18 @@
         ctx.strokeStyle = toCss(colour >>> 0); ctx.lineWidth = lineWidth || 1;
         ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
       },
-      DrawLines(points, lineWidth, colour) {
+      // ⚠️⚠️ 签名是 **(colour, lineWidth, points, strokeStyle)** —— 主题就是这么调的：
+      //     ring.js:  gr.DrawLines(col, lw, pts, RING_ROUND)
+      //              gr.DrawLines(withAlpha(glow, a * ga), gw, pts, RING_ROUND)
+      //   我原来写成 (points, lineWidth, colour)，顺序反了 → 传进来的"points"其实是颜色数字，
+      //   `points.length < 4` 直接 return → **2D 环的整条管线不画**，而且不报错。
+      //   用户实测："signal 页面 2D 模式上的管线不能正常显示"。同时把 StrokeStyle
+      //   （起止端帽 / 连接方式）作用到**当前**绘图上下文 —— 以前改的是全局 CTX，落到别的面板去了。
+      DrawLines(a, lineWidth, c, style) {
+        const points = Array.isArray(a) ? a : c;          // 兼容旧的 (points, lw, colour)
+        const colour = Array.isArray(a) ? c : a;
         if (!points || points.length < 4) return;
+        applyStrokeStyle(ctx, style);
         ctx.strokeStyle = toCss(colour >>> 0); ctx.lineWidth = lineWidth || 1;
         ctx.beginPath(); ctx.moveTo(points[0], points[1]);
         for (let i = 2; i + 1 < points.length; i += 2) ctx.lineTo(points[i], points[i + 1]);
@@ -416,10 +426,9 @@
       return { Kind: kind, Image: img, Opacity: opacity, __brush: true, __kind: kind, __img: img };
     },
     StrokeStyle(o) {
-      if (!o) return;
-      if (o.startCap != null) CTX && (CTX.lineCap = ['butt', 'square', 'round'][o.startCap] || 'butt');
-      if (o.lineJoin != null) CTX && (CTX.lineJoin = ['miter', 'bevel', 'round'][o.lineJoin] || 'miter');
-      return o;
+      // 只做"样式对象"本身：真正的端帽/连接要在**画线时**作用到那支笔的上下文上
+      // （以前这里直接改全局 CTX → 会串到别的面板/别的画布上）。见 applyStrokeStyle。
+      return o || null;
     },
     TextLayout() { return { Draw: () => { } }; },
   };
@@ -505,6 +514,16 @@
     byKey.set(key, cv);
     if (MATRIX_CACHE.size > 6) MATRIX_CACHE.delete(MATRIX_CACHE.keys().next().value);
     return cv;
+  }
+  const CAP_CSS = ['butt', 'square', 'round'];      // D2D stroke style: 0=flat 1=square 2=round
+  const JOIN_CSS = ['miter', 'bevel', 'round'];     // D2D: 0=miter 1=bevel 2=round
+  /** 把 d2d.StrokeStyle 的结果作用到**指定**绘图上下文（主题用它给 2D 环的粗线做圆角连接） */
+  function applyStrokeStyle(c, style) {
+    if (!c || !style) return;
+    const cap = style.startCap != null ? style.startCap : style.endCap;
+    if (cap != null && CAP_CSS[cap]) c.lineCap = CAP_CSS[cap];
+    if (style.lineJoin != null && JOIN_CSS[style.lineJoin]) c.lineJoin = JOIN_CSS[style.lineJoin];
+    if (style.miterLimit != null) c.miterLimit = style.miterLimit;
   }
   /** 造一个和 CreateImage 同形状的句柄（能被 DrawImage 当源用、也能 GetGraphics 继续画） */  function makeImageHandle(cv, lw, lh, d) {
     const g2 = cv.getContext('2d');

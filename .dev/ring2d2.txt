@@ -1,0 +1,25 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/ring2d-bug.mjs
+起始: {"mode":"2d"}  中心像素: 11204
+
+--- 切到 2d ---
+  设置: ok
+  Ring.mode = 2d  中心像素: 11204
+  日志: （无）
+
+--- 切到 classic ---
+  设置: ok
+  Ring.mode = classic  中心像素: 5979
+  日志: （无）
+
+--- 切到 3d ---
+  设置: ok
+  Ring.mode = 3d  中心像素: 8557
+  日志: （无）
+
+--- 切到 2d ---
+  设置: ok
+  Ring.mode = 2d  中心像素: 11204
+  日志: （无）
+
+已存 .dev/ring-2d.png / ring-classic.png / ring-3d.png
+[chrome-run] 已关闭无头 Chrome

@@ -1,0 +1,11 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/live-scheme-fix.mjs
+线上配色: {"SCHEME":"archive","MODE":"dark"}  中心像素: 8557
+  flare    light 中心像素=8913  ✓
+  hazard   light 中心像素=8830  ✓
+  front    light 中心像素=8843  ✓
+  field    dark  中心像素=8310  ✓
+  archive  light 中心像素=10643  ✓
+
+控制台错误: 0 []
+已存 .dev/live-flare-light.png
+[chrome-run] 已关闭无头 Chrome
