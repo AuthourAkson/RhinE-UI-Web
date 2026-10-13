@@ -1,0 +1,6 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/live-mobile-btn.mjs
+【线上手机横屏 844×390】按钮: {"x":259,"y":231,"w":264,"h":26,"vw":844,"vh":390,"inside":true}
+  触摸按钮后曲库文件数: 8
+控制台错误: 0 []
+已存 .dev/live-mobile-btn.png
+[chrome-run] 已关闭无头 Chrome
