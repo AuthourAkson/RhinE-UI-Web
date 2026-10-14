@@ -34,14 +34,17 @@ const hotlinkRule = {
   action: 'block',
   description: HOTLINK_DESC,
   enabled: true,
+  // ⚠️ 免费版**不允许 `matches`（正则）运算符** —— 实测报 "not entitled: the use of operator
+  //    Matches is not allowed, a Business plan or a WAF Advanced plan is required"。
+  //    改用 starts_with / contains / ne（你现有的 api-throttle 规则就是用 starts_with 的）。
   // 只挡"别的网站引用"：空 Referer（直接访问 / 应用同源请求）放行；本站域名放行
-  expression: '(http.request.uri.path matches "^/musiclab/") and (http.referer ne "") and not (http.referer contains "auak.dpdns.org")',
+  expression: '(starts_with(http.request.uri.path, "/musiclab/")) and (http.referer ne "") and not (http.referer contains "auak.dpdns.org")',
 };
 const ratelimitRule = {
   action: 'block',
   description: RATELIMIT_DESC,
   enabled: true,
-  expression: `(http.request.uri.path matches "^/musiclab/") and not (ip.src in {${HOME_NET}})`,
+  expression: `(starts_with(http.request.uri.path, "/musiclab/")) and not (ip.src in {${HOME_NET}})`,
   ratelimit: { characteristics: ['ip.src'], period: 60, requests_per_period: 40, mitigation_timeout: 600 },
 };
 
@@ -74,21 +77,41 @@ if (ROLLBACK) {
 }
 
 console.log('\n将要写入的规则:');
-console.log('  ① 防盗链:', JSON.stringify(hotlinkRule, null, 2).replace(/^/gm, '     '));
-console.log('  ② 限流  :', JSON.stringify(ratelimitRule, null, 2).replace(/^/gm, '     '));
-console.log(`\n  说明：正常听歌每首只有 1~4 次请求，40/分钟碰不到；你家网段 ${HOME_NET} 已豁免。`);
+console.log('  ① 防盗链（新增）:', JSON.stringify(hotlinkRule, null, 2).replace(/^/gm, '     '));
+console.log('  ② AI 爬虫（扩充现有的那一条，不做新增 —— 免费版自定义规则 5 条，你现在 3 条）:');
+console.log('     原名: AI Crawl Control - Block AI bots by User Agent（只挡 GPTBot）');
+console.log('     改为: 挡训练/抓取型 AI 爬虫；**保留** ChatGPT-User / OAI-SearchBot / PerplexityBot 等"带访客来"的');
+console.log('\n  ③ 限流：**不做** ✗');
+console.log('     原因：免费版速率限制只有 1 条名额，已被你的 `api-throttle`（/api/*）占用。');
+console.log('     而且 40 次/分钟对"每个文件只抓一次"的爬虫无效（抓完 8 个文件才 8 次请求）。');
+console.log('     配额风险已实测：/musiclab/* 7 天共 61 次请求，免费额度 10 万/天 → 用了 0.06%，不需要限流。');
+console.log(`\n  说明：正常听歌每首只有 1~4 次请求；防盗链只挡"其他网站引用"，空 Referer 与本站域名都放行。`);
+
 
 if (!APPLY) { console.log('\n（dry-run：加 --apply 才会真正写入）'); process.exit(0); }
 if (!custom.ok || !rl.ok) { console.log('\n权限不足，无法写入 ✗'); process.exit(1); }
 
 // ---------- 写入（保留已有规则，只追加/更新自己的那两条） ----------
+const AI_DESC = 'AI Crawl Control - Block AI bots by User Agent';
+const AI_BOTS = ['GPTBot', 'CCBot', 'Bytespider', 'ClaudeBot', 'anthropic-ai', 'Amazonbot', 'Diffbot', 'ImagesiftBot', 'Omgili', 'cohere-ai', 'GoogleOther', 'PetalBot', 'SemrushBot', 'AhrefsBot', 'MJ12bot', 'DotBot'];
+const aiRule = (existing) => ({
+  ...existing,
+  description: AI_DESC,
+  action: 'block',
+  enabled: true,
+  // 保留原有语义（robots.txt 自身放行），并把"只挡 GPTBot"扩成主要 AI 训练/抓取爬虫；
+  // 刻意**不**包含 ChatGPT-User / OAI-SearchBot / PerplexityBot —— 那些是用户/搜索触发的，会带来真实访客。
+  expression: '(http.request.uri.path ne "/robots.txt") and (' + AI_BOTS.map((b) => `(http.user_agent contains "${b}")`).join(' or ') + ')',
+});
+
 const rulesHot = [...(custom.j.result.rules || []).filter((r) => r.description !== HOTLINK_DESC),
   existingHot ? { ...existingHot, ...hotlinkRule } : hotlinkRule];
-const rulesRl = [...(rl.j.result.rules || []).filter((r) => r.description !== RATELIMIT_DESC),
-  existingRl ? { ...existingRl, ...ratelimitRule } : ratelimitRule];
+const rulesAi = (custom.j.result.rules || []).map((r) => (r.description === AI_DESC ? aiRule(r) : r));
+const rulesHotFinal = rulesAi.some((r) => r.description === HOTLINK_DESC)
+  ? rulesAi.map((r) => (r.description === HOTLINK_DESC ? { ...r, ...hotlinkRule } : r))
+  : [...rulesAi, existingHot ? { ...existingHot, ...hotlinkRule } : hotlinkRule];
 
-const r1 = await req('PUT', `/zones/${zone}/rulesets/${custom.j.result.id}`, { rules: rulesHot });
-console.log('\n① 防盗链写入:', r1.ok ? '✓ 成功' : '✗ ' + JSON.stringify(r1.j.errors || r1.j).slice(0, 200));
-const r2 = await req('PUT', `/zones/${zone}/rulesets/${rl.j.result.id}`, { rules: rulesRl });
-console.log('② 限流写入  :', r2.ok ? '✓ 成功' : '✗ ' + JSON.stringify(r2.j.errors || r2.j).slice(0, 200));
+const r1 = await req('PUT', `/zones/${zone}/rulesets/${custom.j.result.id}`, { rules: rulesHotFinal });
+console.log('\n① 防盗链 + AI 爬虫写入:', r1.ok ? '✓ 成功' : '✗ ' + JSON.stringify(r1.j.errors || r1.j).slice(0, 200));
+console.log('   （限流按上面的说明跳过 —— 免费版名额已被 /api/* 占用）');
 console.log('\n回滚命令：node .dev/cf-apply-b.mjs --rollback --apply');

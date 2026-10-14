@@ -1,0 +1,7 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/verify-audio-live.mjs
+demo 按钮可见: true
+曲库文件数: 8
+播放中=true  曲长=209.7s  时间 8.93 → 12.96  **在走 ✓ 音频正常**
+media 元素状态: []
+控制台错误: 0 []
+[chrome-run] 已关闭无头 Chrome
