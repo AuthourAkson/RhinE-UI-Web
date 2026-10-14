@@ -539,16 +539,30 @@ async function main() {
     mTx = w <= innerWidth ? (innerWidth - w) / 2 : Math.min(0, Math.max(innerWidth - w, mTx));
     mTy = h <= innerHeight ? (innerHeight - h) / 2 : Math.min(0, Math.max(innerHeight - h, mTy));
   }
+  let lastW = innerWidth, lastH = innerHeight, lastPortrait = innerHeight > innerWidth;
   function layoutView() {
     if (!MOBILE) return;
-    // 首次进入必须**用合适值**（mScale 初值 0 → 直接取 fit），之后换方向只保证"不小于合适值"，
-    // 不重置用户已经捏合出来的缩放。
-    mScale = mScale > 0 ? Math.max(mScale, fitScale()) : fitScale();
+    // ⚠️ 以前这里是 `mScale = max(mScale, fitScale())`（只增不减）——
+    //    竖屏 fit 0.271 → 横屏 0.476 → **转回竖屏仍保留 0.476** → 板子宽 1440×0.476 = 685px 而屏宽只有 390，
+    //    于是只显示左边一部分，右侧的 PREFS / MENU 被切掉（用户实测"竖屏↔横屏来回一次比例就变了"）。
+    //    正确做法：**屏幕方向变化**（或尺寸明显变化）时回到"刚好装下"的 fitScale；
+    //    同方向下的细微变化（地址栏收起之类）只做"不小于 fit"的兜底，不重置用户捏合出来的缩放。
+    const portrait = innerHeight > innerWidth;
+    const bigChange = Math.abs(innerWidth - lastW) > Math.max(40, lastW * 0.12)
+      || Math.abs(innerHeight - lastH) > Math.max(40, lastH * 0.12);
+    if (portrait !== lastPortrait || bigChange) mScale = fitScale();
+    else mScale = mScale > 0 ? Math.max(mScale, fitScale()) : fitScale();
+    lastW = innerWidth; lastH = innerHeight; lastPortrait = portrait;
     clampPan(); applyMobileView();
   }
   if (MOBILE) {
-    // 有效 DPR：让画布刚好匹配"板子缩放后的物理像素"（例 dpr3 × 0.48 ≈ 1.43 —— 比 dpr3 省约 4 倍像素）
-    try { window.__RHINE_DPR__ = Math.min(2, Math.max(1, devicePixelRatio * fitScale())); } catch (e) { }
+    // 有效 DPR：让画布刚好匹配"板子缩放后的物理像素"（例 dpr3 × 0.48 ≈ 1.43 —— 比 dpr3 省约 4 倍像素）。
+    // ⚠️ 必须按**横屏**那一侧算：如果竖屏启动时按 0.271 取（=0.81），之后转横屏就会欠采样、发糊。
+    //    横屏等价的 fit = min(长边/1440, 短边/820) —— 与初始化时的方向无关。
+    try {
+      const longSide = Math.max(innerWidth, innerHeight), shortSide = Math.min(innerWidth, innerHeight);
+      window.__RHINE_DPR__ = Math.min(2, Math.max(1, devicePixelRatio * Math.min(longSide / VIEW.w, shortSide / VIEW.h)));
+    } catch (e) { }
     const gdist = (p) => Math.hypot(p[0][0] - p[1][0], p[0][1] - p[1][1]);
     const gmid = (p) => [(p[0][0] + p[1][0]) / 2, (p[0][1] + p[1][1]) / 2];
     let s0 = 1, d0 = 0, m0 = [0, 0], t0 = [0, 0];

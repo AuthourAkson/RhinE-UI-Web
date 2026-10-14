@@ -1,0 +1,9 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/rotate-check.mjs
+【竖屏(启动) 390×844】 {"board":"390x222","vw":390,"vh":844,"fitsW":true,"fitsH":true,"transform":"translate(0px, 310.958px) scale(0.270833)","prefs":"356~364 ✓","menu":"368~386 ✓","nav":"95~123 ✓"}
+【转横屏 844×390】 {"board":"685x390","vw":844,"vh":390,"fitsW":true,"fitsH":true,"transform":"translate(79.561px, 0px) scale(0.47561)","prefs":"704~718 ✓","menu":"725~757 ✓","nav":"247~296 ✓"}
+【转回竖屏 390×844】 {"board":"390x222","vw":390,"vh":844,"fitsW":true,"fitsH":true,"transform":"translate(0px, 310.958px) scale(0.270833)","prefs":"356~364 ✓","menu":"368~386 ✓","nav":"95~123 ✓"}
+   已存 .dev/rotate-portrait-back.png
+【再转横屏 844×390】 {"board":"685x390","vw":844,"vh":390,"fitsW":true,"fitsH":true,"transform":"translate(79.561px, 0px) scale(0.47561)","prefs":"704~718 ✓","menu":"725~757 ✓","nav":"247~296 ✓"}
+【再回竖屏 390×844】 {"board":"390x222","vw":390,"vh":844,"fitsW":true,"fitsH":true,"transform":"translate(0px, 310.958px) scale(0.270833)","prefs":"356~364 ✓","menu":"368~386 ✓","nav":"95~123 ✓"}
+错误: 0 []
+[chrome-run] 已关闭无头 Chrome
