@@ -142,6 +142,12 @@ self.addEventListener('fetch', (e) => {
   // 音频：缓存优先 + Range 切片
   if (url.pathname.startsWith('/musiclab/')) { e.respondWith(mediaResponse(req)); return; }
 
+  // ⚠️ /cdn-cgi/* 必须永不缓存、直接走网络：
+  //    · /cdn-cgi/trace 是"我现在落到哪个机房"的诊断入口，缓存了就一直显示旧机房；
+  //    · /cdn-cgi/challenge-platform/* 是 Cloudflare 的人机验证脚本，缓存会导致验证失败；
+  //    · /cdn-cgi/rum 是云分析的 beacon（POST，本来也就不该被缓存）。
+  if (url.pathname.startsWith('/cdn-cgi/')) return;
+
   // 页面导航：网络优先，断网/超时回退缓存
   if (req.mode === 'navigate') { e.respondWith(networkFirst(req, SHELL, 6000)); return; }
 
