@@ -1,0 +1,30 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/slow-waterfall.mjs
+导航后等待 92s
+
+=== 页面内资源计时（最慢 18 条）===
+  资源总数 20，总下载 9 KB
+     2741ms      0.8KB  起于  2091ms  /panel.html
+     2545ms      0.8KB  起于  2087ms  /panel.html
+     2323ms      0.8KB  起于  2084ms  /panel.html
+     1864ms      0.8KB  起于  2083ms  /panel.html
+     1645ms      0.8KB  起于  2081ms  /panel.html
+     1425ms      0.8KB  起于  2079ms  /panel.html
+     1417ms      0.8KB  起于  2077ms  /panel.html
+      922ms      0.8KB  起于  2074ms  /panel.html
+      663ms      0.8KB  起于  2072ms  /panel.html
+      460ms      0.8KB  起于  2069ms  /panel.html
+      272ms      0.3KB  起于  1778ms  /favicon.ico
+      259ms      0.3KB  起于  1764ms  /__manifest.json
+      221ms      0.3KB  起于  1531ms  /app.js
+      221ms      0.3KB  起于  1777ms  /cdn-cgi/rum?
+       14ms        0KB  起于  1531ms  /beacon.min.js/v4bc70e2c01a94c73b74392e4234840661791215815
+       11ms        0KB  起于  2040ms  /themes/audio-archive/assets/fonts/GeistMono-SemiBold.ttf
+       11ms        0KB  起于  2040ms  /themes/audio-archive/assets/fonts/GeistMono-Medium.ttf
+       11ms        0KB  起于  2040ms  /themes/audio-archive/assets/fonts/GeistMono-Bold.ttf
+
+=== 关键里程碑 ===
+{"domContentLoaded":1772,"load":1772,"ttfb":1525,"transferKB":1.6,"面板数":10,"有canvas的":10,"还在加载":0}
+
+=== 失败/未完成的请求 ===
+  发起 421 个请求，失败 0 个
+[chrome-run] 已关闭无头 Chrome

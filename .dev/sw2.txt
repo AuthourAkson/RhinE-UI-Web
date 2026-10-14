@@ -1,0 +1,17 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/sw-verify.mjs
+=== 第一次访问（?sw=1 显式启用）===
+  缓存状态: {"caches":["rhine-v1-shell=207","rhine-v1-media=8"],"usage":"31.4MB/10271MB","sw":"active","controlled":true}
+  等待后台预取影片帧…
+  缓存状态: {"caches":["rhine-v1-shell=207","rhine-v1-media=8"],"usage":"31.4MB/10271MB","sw":"active","controlled":true}
+
+=== 播放一首，让音频进入缓存 ===
+  播放中 = true  曲长 = 209.706667
+  缓存状态: {"caches":["rhine-v1-shell=207","rhine-v1-media=8"],"usage":"31.4MB/10271MB","sw":"active","controlled":true}
+
+=== 断网 + 重新加载（决定性验收）===
+  断网后页面标题: RhinE — An Audio Archive（网页版移植 · 里程碑 1）
+  面板数: 10  有画布的: 10
+  缓存状态: {"caches":["rhine-v1-shell=207","rhine-v1-media=8"],"usage":"31.4MB/10271MB","sw":"active","controlled":true}
+  断网下播放: {"on":true,"len":209.706667,"t":9.889737}
+  断网阶段控制台错误: 0 []
+[chrome-run] 已关闭无头 Chrome

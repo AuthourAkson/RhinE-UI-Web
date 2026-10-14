@@ -598,6 +598,33 @@ async function main() {
     layoutView();
   }
 
+  /* ------------------------------------------------- Service Worker（离线缓存）--
+   * 背景：国内直连 Cloudflare 免费版只有 ~30KB/s，开场影片 145 帧 ≈14MB 每次都要重下。
+   * 目标（用户要求）：**第一次打开之后不再耗流量**。
+   * 做法：sw.js 预缓存"壳"（约 1MB，几秒进界面），随后在**后台**逐帧抓开场影片；
+   *       音频与 70MB 的 render 素材走运行时缓存，第一次用到就本地化。
+   * 触发条件：https 下自动启用；本地 http（开发服务器）需显式加 ?sw=1，避免污染开发循环。
+   */
+  if ('serviceWorker' in navigator) {
+    const isDev = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+    const wantSW = !isDev || new URLSearchParams(location.search).has('sw');
+    if (wantSW) {
+      navigator.serviceWorker.addEventListener('message', (e) => {
+        const d = e.data || {};
+        if (d.type === 'PRECACHE_DONE') log(ht('离线缓存完成：{0} 个文件已本地化（下次打开不再走网络）', d.done || 0));
+      });
+      navigator.serviceWorker.register('/sw.js', { scope: '/' }).then((reg) => {
+        log(ht('离线缓存已启用（{0}）', reg.active ? '已接管' : '首次安装中'));
+        // 等壳装好、界面稳定后再让 SW 后台抓影片帧，别抢首屏那点带宽
+        const kick = () => navigator.serviceWorker.ready.then((r) => {
+          const w = r.active || navigator.serviceWorker.controller;
+          if (w) w.postMessage({ type: 'PRECACHE' });
+        }).catch(() => { });
+        setTimeout(kick, 6000);
+      }).catch((e) => log('Service Worker 注册失败：' + (e && e.message)));
+    }
+  }
+
   // 2) 根面板（frame.js）：它才是布局的主人，放在最底层
   rootPanel = makePanel('root', 'settings', PANELS.length);
   rootPanel.__frame.style.zIndex = '0';

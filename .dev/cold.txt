@@ -1,0 +1,18 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/cold-load.mjs
+file:///D:/AgentTestLab/RhinE-UI/.dev/cold-load.mjs:33
+console.log(await ev(`(function(){
+
+SyntaxError: missing ) after argument list
+    at compileSourceTextModule (node:internal/modules/esm/utils:355:16)
+    at ModuleLoader.moduleStrategy (node:internal/modules/esm/translators:90:18)
+    at #translate (node:internal/modules/esm/loader:441:20)
+    at afterLoad (node:internal/modules/esm/loader:509:29)
+    at ModuleLoader.loadAndTranslate (node:internal/modules/esm/loader:514:12)
+    at #getOrCreateModuleJobAfterResolve (node:internal/modules/esm/loader:567:36)
+    at afterResolve (node:internal/modules/esm/loader:614:52)
+    at ModuleLoader.getOrCreateModuleJob (node:internal/modules/esm/loader:620:12)
+    at node:internal/modules/esm/loader:639:32
+    at TracingChannel.tracePromise (node:diagnostics_channel:538:22)
+
+Node.js v26.7.0
+[chrome-run] 已关闭无头 Chrome

@@ -1,0 +1,34 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/cold-load.mjs
+冷启动等待 150s
+
+=== 里程碑与分类 ===
+{
+ "ttfb": 475,
+ "domReady": 888,
+ "load": 888,
+ "资源数": 20,
+ "总KB": 688,
+ "分类": [
+  "宿主代码: 1个/31KB/199ms",
+  "其它: 14个/316KB/7741ms",
+  "主题JS/素材: 5个/341KB/1133ms"
+ ],
+ "面板数": 11
+}
+
+=== 最慢 12 个请求 ===
+      696ms      0.8KB  /panel.html
+      695ms    307.6KB  /__manifest.json
+      695ms      0.8KB  /panel.html
+      694ms      0.8KB  /panel.html
+      694ms      0.8KB  /panel.html
+      692ms      0.8KB  /panel.html
+      486ms      0.3KB  /favicon.ico
+      485ms      0.3KB  /cdn-cgi/rum?
+      454ms      0.8KB  /panel.html
+      454ms      0.8KB  /panel.html
+      432ms      0.8KB  /panel.html
+      431ms      0.8KB  /panel.html
+
+=== 失败的请求（共 0）===
+[chrome-run] 已关闭无头 Chrome

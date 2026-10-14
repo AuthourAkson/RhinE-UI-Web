@@ -92,6 +92,42 @@ for (const rel of m.files) {
 }
 fs.writeFileSync(path.join(OUT, '__manifest.json'), manifestJson);
 
+/* ------------------------------------------------------- Service Worker 支持 --
+ * sw.js 放到站点根目录（作用域才能覆盖全站），并生成它的预缓存清单：
+ *   shell      —— 进界面必须的"壳"：HTML/app.js/shim/播放列表 + 主题全部 JS + 字体
+ *                 （约 1MB —— 国内链路只有 ~30KB/s，先把壳拿到手就能几秒进界面）
+ *   background —— 开场影片的 145 帧（≈14MB）。它每次启动都要播，是最耗流量的一块，
+ *                 由 SW 在后台**一个一个**慢慢抓（见 sw.js 的 PRECACHE），不抢首屏带宽。
+ * 注意：assets/render 那 70MB 的 PNG 不进清单 —— 主题按需加载，走 SW 的
+ *      stale-while-revalidate / cacheFirst，第一次用到就本地化。
+ */
+{
+  const swSrc = path.join(PROJECT_ROOT, 'sw.js');
+  if (fs.existsSync(swSrc)) fs.copyFileSync(swSrc, path.join(OUT, 'sw.js'));
+
+  const shell = new Set(['/', '/index.html', '/panel.html', '/app.js', '/shim/shim.js', '/native/playlist.js', '/robots.txt', '/__manifest.json']);
+  if (DEMO) shell.add('/__music.json');
+  // 主题每个面板的脚本顺序（去重）—— 就是首屏真正会请求的那些文件
+  for (const key of Object.keys(m.scripts || {})) for (const rel of (m.scripts[key] || [])) shell.add('/' + rel);
+  // 字体：5 个 ttf，主题上屏就要用
+  const fontDir = path.join(PROJECT_ROOT, 'themes/audio-archive/assets/fonts');
+  if (fs.existsSync(fontDir)) for (const f of fs.readdirSync(fontDir)) if (/\.(ttf|otf|woff2?)$/i.test(f)) shell.add('/themes/audio-archive/assets/fonts/' + f);
+
+  const background = [];
+  // ⚠️ 只看**真正进了 dist** 的那套皮肤：仓库里有 10 套（1440 帧 ≈140MB），
+  //    build 默认只发 white（其余在 droppedIntros 里）—— 按仓库目录 glob 会得到 1440 帧，
+  //    全是 404，还会把后台预取时间拖到几小时。
+  const introRootDir = path.join(PROJECT_ROOT, 'themes/audio-archive/assets/intro');
+  for (const skin of fs.existsSync(introRootDir) ? fs.readdirSync(introRootDir) : []) {
+    if (droppedIntros.includes(skin)) continue;
+    const dir = path.join(introRootDir, skin);
+    if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) continue;
+    for (const f of fs.readdirSync(dir)) if (/\.(jpg|jpeg|png|webp)$/i.test(f)) background.push(`/themes/audio-archive/assets/intro/${skin}/${f}`);
+  }
+  fs.writeFileSync(path.join(OUT, 'sw-assets.json'), JSON.stringify({ version: Date.now(), shell: [...shell], background }));
+  console.log(`Service Worker: 壳 ${shell.size} 个文件，后台预取 ${background.length} 帧开场影片`);
+}
+
 /* ------------------------------------------------- 内置 demo 曲库索引 __music.json --
  * 本地开发时这份是 serve.mjs 现算的；静态站没有 Node，所以构建期写死。
  * 形状与本地完全一致（{ path, url, size }），宿主 app.js 的 loadHttpLibrary() 原样能用。
@@ -157,6 +193,15 @@ const HEADERS = `# Cloudflare Pages / Netlify 通用缓存策略
 # 字体虽然也 immutable，单独列出便于将来做子集化后只改这一条
 /themes/audio-archive/assets/fonts/*
   Cache-Control: public, max-age=31536000, immutable
+
+# ⚠️ Service Worker 必须 no-cache：否则浏览器永远拿旧的 SW，更新发不出去。
+#    它的预缓存清单同样要每次校验（内容随构建变化）。
+/sw.js
+  Cache-Control: no-cache, must-revalidate
+  Service-Worker-Allowed: /
+
+/sw-assets.json
+  Cache-Control: no-cache, must-revalidate
 
 # 内置音频库：明确告诉爬虫不要收录/存档。
 # 依据：7 天分析里 /musiclab/* 被一个日本 IP（103.62.49.138）把整套曲目抓了一遍，

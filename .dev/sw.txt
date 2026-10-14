@@ -1,18 +1,20 @@
-[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/switch-debug.mjs
-点击 English…
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/sw-verify.mjs
+=== 第一次访问（?sw=1 显式启用）===
+  缓存状态: {"caches":["rhine-v1-shell=200"],"usage":"16.7MB/10257MB","sw":"active","controlled":true}
+  等待后台预取影片帧…
+  缓存状态: {"caches":["rhine-v1-shell=200"],"usage":"16.7MB/10257MB","sw":"active","controlled":true}
 
-=== 切语言后的日志（面板与宿主）===
-  log: 音频可视化就绪：48000 Hz / 2 声道
+=== 播放一首，让音频进入缓存 ===
+  播放中 = true  曲长 = 209.706667
+  缓存状态: {"caches":["rhine-v1-shell=206","rhine-v1-media=8"],"usage":"31.6MB/10272MB","sw":"active","controlled":true}
 
-=== iframe 状态 ===
-header: http://127.0.0.1:8300/panel.html readyState=complete scripts=? UI_LANG=undefined
-transport: http://127.0.0.1:8300/panel.html readyState=complete scripts=? UI_LANG=undefined
-stage: http://127.0.0.1:8300/panel.html readyState=complete scripts=? UI_LANG=undefined
-manager: http://127.0.0.1:8300/panel.html readyState=complete scripts=? UI_LANG=undefined
-head: http://127.0.0.1:8300/panel.html readyState=complete scripts=? UI_LANG=undefined
-playlist: http://127.0.0.1:8300/panel.html readyState=complete scripts=? UI_LANG=undefined
-card: http://127.0.0.1:8300/panel.html readyState=complete scripts=? UI_LANG=undefined
-tip: http://127.0.0.1:8300/panel.html readyState=complete scripts=? UI_LANG=undefined
-fx: http://127.0.0.1:8300/panel.html readyState=complete scripts=? UI_LANG=undefined
-root: http://127.0.0.1:8300/panel.html readyState=complete scripts=13 UI_LANG=undefined
+=== 断网 + 重新加载（决定性验收）===
+  断网后页面标题: RhinE — An Audio Archive（网页版移植 · 里程碑 1）
+  面板数: 10  有画布的: 10
+  缓存状态: {"caches":["rhine-v1-shell=207","rhine-v1-media=8"],"usage":"31.4MB/10271MB","sw":"active","controlled":true}
+  断网下播放: {"on":true,"len":209.706667,"t":9.88}
+  断网阶段控制台错误: 1 [
+  'ReferenceError: pb is not defined\n' +
+    '    at main (http://127.0.0.1:8310/app.js:677:3)'
+]
 [chrome-run] 已关闭无头 Chrome
