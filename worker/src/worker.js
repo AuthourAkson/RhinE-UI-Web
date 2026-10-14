@@ -31,6 +31,14 @@ export default {
     const full = await env.ASSETS.fetch(new Request(url.toString(), { method: 'GET', headers: cleanHeaders }));
 
     const immutable = 'public, max-age=31536000, immutable';
+    // ⚠️ Range 分支要自己拼响应头，很容易把 _headers 下发的东西丢掉。
+    //    /musiclab/* 在 _headers 里带 `X-Robots-Tag: noindex,noarchive,nosnippet`（版权音频不希望被收录），
+    //    浏览器取音频几乎总是带 Range → 这里不显式透传的话那条 noindex 等于没生效。
+    const passThrough = (h) => {
+      const r = full.headers.get('x-robots-tag');
+      if (r) h['x-robots-tag'] = r;
+      return h;
+    };
     if (!range || full.status !== 200) {
       const h = new Headers(full.headers);
       h.set('accept-ranges', 'bytes');
@@ -43,7 +51,7 @@ export default {
     if (!m) {
       return new Response(buf, {
         status: 200,
-        headers: { 'content-type': full.headers.get('content-type') || 'application/octet-stream', 'accept-ranges': 'bytes', 'cache-control': immutable },
+        headers: passThrough({ 'content-type': full.headers.get('content-type') || 'application/octet-stream', 'accept-ranges': 'bytes', 'cache-control': immutable }),
       });
     }
     const total = buf.byteLength;
@@ -61,14 +69,14 @@ export default {
     const slice = buf.slice(start, end + 1);
     return new Response(slice, {
       status: 206,
-      headers: {
+      headers: passThrough({
         'content-type': full.headers.get('content-type') || 'application/octet-stream',
         'content-range': `bytes ${start}-${end}/${total}`,
         'accept-ranges': 'bytes',
         // 2) 自己算长度，别用资产服务的 content-length
         'content-length': String(slice.byteLength),
         'cache-control': immutable,
-      },
+      }),
     });
   },
 };

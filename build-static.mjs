@@ -157,6 +157,20 @@ const HEADERS = `# Cloudflare Pages / Netlify 通用缓存策略
 # 字体虽然也 immutable，单独列出便于将来做子集化后只改这一条
 /themes/audio-archive/assets/fonts/*
   Cache-Control: public, max-age=31536000, immutable
+
+# 内置音频库：明确告诉爬虫不要收录/存档。
+# 依据：7 天分析里 /musiclab/* 被一个日本 IP（103.62.49.138）把整套曲目抓了一遍，
+# 而这些含第三方版权音频，不该被搜索引擎收录。noindex 对**合规**爬虫有效
+# （恶意扫描器无视 robots，那部分靠 Cloudflare 的 WAF/限流挡）。
+/musiclab/*
+  X-Robots-Tag: noindex, noarchive, nosnippet
+  Cache-Control: public, max-age=3600
+
+/robots.txt
+  Cache-Control: public, max-age=3600
+
+/sitemap.xml
+  Cache-Control: public, max-age=3600
 `;
 
 // SPA 兜底：本站不需要（见上面说明）。保留变量方便将来别的站复用这套构建。

@@ -1,0 +1,94 @@
+=== A) 来源 IP TOP 20（请求量/流量异常 = 爬虫或攻击）===
+     1903 次      94.0 MB  103.62.49.138     JP
+     1536 次     114.4 MB  113.25.8.244      CN
+      795 次      42.6 MB  103.62.49.178     JP
+      651 次       1.1 MB  34.7.151.53       NL
+      596 次      62.5 MB  2408:8427:291:d3a6:698f:268f:57f7:8236 CN
+      546 次      16.8 MB  103.62.49.154     JP
+      525 次      18.0 MB  134.195.101.193   US
+      496 次      28.1 MB  52.12.11.43       US
+      412 次      29.2 MB  2408:8427:9c92:4fff:dc84:1dff:fe45:6d28 CN
+      412 次      16.1 MB  103.62.49.170     JP
+      372 次      43.3 MB  202.97.145.114    CN
+      369 次       0.7 MB  34.140.132.132    BE
+      357 次      14.4 MB  161.123.249.194   US
+      331 次       6.9 MB  161.129.171.147   US
+      312 次       5.9 MB  103.62.49.162     JP
+      307 次     242.4 MB  113.25.2.103      CN
+      294 次      18.4 MB  202.97.145.100    CN
+      292 次       0.7 MB  35.213.94.39      JP
+      291 次       0.7 MB  34.4.31.30        US
+      289 次       0.7 MB  35.217.150.248    JP
+
+=== B) 安全事件（Cloudflare 判定为威胁/拦截的）===
+  （没有安全事件记录）
+
+=== C) 响应状态码分布 ===
+      7278  200
+      3194  403
+      2459  204
+      1890  404
+      1858  304
+      1214  307
+       435  301
+        96  302
+        78  206
+        40  401
+        31  499
+        28  400
+
+=== D) 探扫路径（404/403 = 被扫描的证据）===
+     247  404  /favicon.ico
+      69  403  /.git/config
+      58  403  /panel.html
+      54  403  /.env.live
+      52  404  /phpinfo
+      52  403  /.env.sample
+      49  403  /backend/.env
+      47  403  /application/.env
+      47  403  /config.json
+      46  403  /.docker/.env
+      45  404  /.boto
+      44  403  /.env
+      41  403  /.gitlab-ci.yml
+      39  403  /admin/phpinfo.php
+      37  403  /.env.development
+      37  403  /.env.php
+      36  403  /.env.backup
+      36  404  /_environment
+      36  403  /.env.old
+      36  403  /production/.env
+      34  403  /api/.env
+      34  403  /current/.env
+      34  404  /config.yaml
+      33  404  /info
+      32  403  /.env-example
+
+=== E) 音频被抓取情况（/musiclab/* —— 决定 Workers 配额与盗链风险）===
+      12 次     42.6 MB  2408:8427:291:d3a6:698f:268f:57f7:8236 CN  /musiclab/Mili%20-%20world.execute%20(me)%20%3B.mp
+       9 次     72.8 MB  113.25.8.244      CN  /musiclab/Mili%20-%20world.execute%20(me)%20%3B.mp
+       4 次      5.7 MB  2408:8427:9cc0:f7:acde:dfff:feb8:7a9 CN  /musiclab/%E8%BF%B7%E8%BF%AD%E9%A6%99-world.execut
+       3 次     18.7 MB  205.185.118.236   US  /musiclab/Mili%20-%20world.execute%20(me)%20%3B.mp
+       3 次      1.7 MB  103.62.49.138     JP  /musiclab/bombinsound.mp3
+       3 次      0.9 MB  103.62.49.138     JP  /musiclab/horror-hit.mp3
+       3 次     24.3 MB  103.62.49.138     JP  /musiclab/Mili%20-%20world.execute%20(me)%20%3B.mp
+       2 次      1.1 MB  240e:426:9d64:3dd5:9004:37ff:fed3:1b9d CN  /musiclab/bombinsound.mp3
+       2 次      0.3 MB  103.62.49.138     JP  /musiclab/speech.mp3
+       2 次      0.8 MB  240e:426:9d64:3dd5:9004:37ff:fed3:1b9d CN  /musiclab/ethereal-bells.mp3
+       2 次      8.1 MB  2408:8427:9c92:4fff:dc84:1dff:fe45:6d28 CN  /musiclab/Mili%20-%20world.execute%20(me)%20%3B.mp
+       2 次      0.8 MB  103.62.49.138     JP  /musiclab/ethereal-bells.mp3
+       2 次      0.4 MB  103.62.49.138     JP  /musiclab/rock-cinematic.mp3
+       1 次      3.2 MB  2408:8427:291:d3a6:698f:268f:57f7:8236 CN  /musiclab/%E8%BF%B7%E8%BF%AD%E9%A6%99-world.execut
+       1 次      0.4 MB  2408:8427:291:d3a6:698f:268f:57f7:8236 CN  /musiclab/ethereal-bells.mp3
+       1 次      0.1 MB  2408:8427:9c00:d2c:2ce5:17ff:fecd:28b9 CN  /musiclab/speech.mp3
+       1 次      3.2 MB  205.185.118.236   US  /musiclab/%E8%BF%B7%E8%BF%AD%E9%A6%99-world.execut
+       1 次      0.4 MB  2408:8427:9c00:d2c:2ce5:17ff:fecd:28b9 CN  /musiclab/ethereal-bells.mp3
+       1 次      0.2 MB  2408:8427:9c00:d2c:2ce5:17ff:fecd:28b9 CN  /musiclab/rock-cinematic.mp3
+       1 次      5.0 MB  2408:8427:9cc0:f7:acde:dfff:feb8:7a9 CN  /musiclab/Mili%20-%20world.execute%20(me)%20%3B.mp
+       1 次      8.1 MB  103.62.49.170     JP  /musiclab/Mili%20-%20world.execute%20(me)%20%3B.mp
+       1 次      8.1 MB  103.62.49.178     JP  /musiclab/Mili%20-%20world.execute%20(me)%20%3B.mp
+       1 次      3.2 MB  2408:8427:9c00:d2c:2ce5:17ff:fecd:28b9 CN  /musiclab/%E8%BF%B7%E8%BF%AD%E9%A6%99-world.execut
+       1 次      0.3 MB  2408:8427:291:d3a6:698f:268f:57f7:8236 CN  /musiclab/horror-hit.mp3
+       1 次      0.1 MB  240e:426:9d64:3dd5:9004:37ff:fed3:1b9d CN  /musiclab/speech.mp3
+  ---- /musiclab/* 合计 61 次、210.6 MB（Workers 配额按"请求数"算，免费 10 万/天）
+  按 IP：2408:8427:291:d3a6:698f:268f:57f7:8236=15  103.62.49.138=15  113.25.8.244=9  2408:8427:9cc0:f7:acde:dfff:feb8:7a9=5  240e:426:9d64:3dd5:9004:37ff:fed3:1b9d=5

@@ -1,0 +1,32 @@
+# RhinE · Audio Archive / auak.dpdns.org
+#
+# 站内是浏览器应用（视图切换都在 iframe 里，没有独立的“页面”），所以只收录门户首页。
+# 内置音频库 /musiclab/ 含第三方版权曲目，明确不允许抓取与收录
+# （同时用 _headers 给 /musiclab/* 下发 X-Robots-Tag: noindex,nosnippet）。
+
+User-agent: *
+Allow: /$
+Disallow: /musiclab/
+Disallow: /__manifest.json
+Disallow: /__music.json
+Disallow: /panel.html
+Disallow: /panel
+Disallow: /shim/
+Disallow: /themes/
+Disallow: /native/
+Disallow: /workers/
+
+# 明显无意义的抓取（这些路径本来就只有 404/403，别浪费额度）
+User-agent: SemrushBot
+Disallow: /
+
+User-agent: AhrefsBot
+Disallow: /
+
+User-agent: MJ12bot
+Disallow: /
+
+User-agent: DotBot
+Disallow: /
+
+# 站内是单页浏览器应用，没有需要收录的独立页面，因此不提供 sitemap
