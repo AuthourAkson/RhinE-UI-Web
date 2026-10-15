@@ -142,13 +142,25 @@ async function swr(req, cacheName) {
 }
 async function networkFirst(req, cacheName, timeoutMs) {
   const cache = await caches.open(cacheName);
+  const hit = await cache.match(req);
+  // ⚠️⚠️ 超时只能用在"缓存里已经有副本"的情况：
+  //    · 有副本 → 用超时抢占（网络慢就先给缓存，体感秒开）
+  //    · **没有副本 → 绝不能超时** ✗ ：首次访问 panel.html/主题 JS 都不在缓存里，
+  //      而这条线路上建立一条连接就可能要 1.3~12 秒 —— 硬超时会把本来能成功的请求掐死，
+  //      返回网络错误，浏览器就在 iframe 里显示"网页可能暂时无法连接"（用户实测）
+  //      ＝ 我自己把它弄得更糟了。没有副本时老老实实等网络（配合 fetchRetry 重试）。
+  if (!hit) {
+    const net = await fetchRetry(req, 3, 0);
+    if (net && net.status === 200) cache.put(req, net.clone()).catch(() => { });
+    return net;
+  }
   try {
-    const net = await fetchRetry(req, 3, timeoutMs);
+    const net = await fetchRetry(req, 2, timeoutMs);
     if (net && net.status === 200) cache.put(req, net.clone()).catch(() => { });
     return net;
   } catch (err) {
-    const hit = await cache.match(req);
-    if (hit) return hit;
+    const again = await cache.match(req);
+    if (again) return again;
     if (req.mode === 'navigate') {
       const shell = await caches.open(SHELL);
       const idx = (await shell.match('/index.html')) || (await shell.match('/'));
