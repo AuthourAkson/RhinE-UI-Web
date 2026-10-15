@@ -362,7 +362,14 @@ const BUS = {
     // ⚠️ 和 view 一样：type 在 info 的 JSON 里，name 只是频道名（audio-archive）——
     //    之前按 name 比，introDone 永远是 false。
     if (name === 'audio-archive') {
-      try { const m0 = JSON.parse(info); if (m0 && m0.type === 'boot-end') introDone = true; } catch (e) { }
+      try {
+        const m0 = JSON.parse(info);
+        if (m0 && m0.type === 'boot-end') {
+          introDone = true;
+          // 影片结束 → 现在才让 SW 去后台预取影片帧（别和首屏抢那点带宽，见注册处的说明）
+          if (typeof window.__RHINE_ON_INTRO_DONE__ === 'function') window.__RHINE_ON_INTRO_DONE__();
+        }
+      } catch (e) { }
     }
     if (name === 'audio-archive') {
       // ⚠️ 主题的 send(type, data) 是 window.NotifyOthers(BUS, JSON.stringify({type, data}))：
@@ -615,12 +622,17 @@ async function main() {
       });
       navigator.serviceWorker.register('/sw.js', { scope: '/' }).then((reg) => {
         log(ht('离线缓存已启用（{0}）', reg.active ? '已接管' : '首次安装中'));
-        // 等壳装好、界面稳定后再让 SW 后台抓影片帧，别抢首屏那点带宽
+        // ⚠️ 后台预取要等**开场影片结束之后**再开始：
+        //    影片 144 帧本身就在抢带宽，两者同时开工会把首屏（壳/主题 JS/panel.html）饿死 ✗
+        //    —— 国内 ~30KB/s 的链路上，这正是"面板加载失败、整站打不开"的直接原因。
+        //    boot-end 由 frame.js 经 BUS 送上来；万一收不到（没开影片等），20 秒后兜底开跑。
         const kick = () => navigator.serviceWorker.ready.then((r) => {
           const w = r.active || navigator.serviceWorker.controller;
           if (w) w.postMessage({ type: 'PRECACHE' });
         }).catch(() => { });
-        setTimeout(kick, 6000);
+        let kicked = false;
+        window.__RHINE_ON_INTRO_DONE__ = () => { if (kicked) return; kicked = true; setTimeout(kick, 5000); };
+        setTimeout(() => { if (!kicked) { kicked = true; kick(); } }, 20000);
       }).catch((e) => log('Service Worker 注册失败：' + (e && e.message)));
     }
   }

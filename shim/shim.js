@@ -409,7 +409,18 @@
     LoadImageAsyncV(path, onDone) { const img = imageFor(norm(path)); queueMicrotask(() => onDone && onDone(img)); return img; },
     // ⚠️ 主题实际用的是这个名字（带数字后缀，我第一次枚举 API 时用 [A-Za-z_] 漏掉了它）：
     //     d2d.LoadImageAsyncV2(0, path).then(img => …)，第一个参数是占位，返回 Promise
-    LoadImageAsyncV2(_unused, path) { return imageReady(norm(path)); },
+    //     ⚠️ 开场影片的帧在这里**限流**：主题会为一部 ~6.5 秒的影片连开 144 个请求，
+    //        而在国内那条 ~30KB/s 的链路上，它会把"壳 / 主题 JS / panel.html"的带宽全部吃光 ✗
+    //        → 面板 iframe 加载失败、整站打不开（用户实测：换运营商就好）。
+    //        这里让影片帧排队（最多 2 个并发），把带宽留给决定"能不能进界面"的请求；
+    //        其它素材（外壳/环/地板/封面）不受影响，仍立即加载。
+    LoadImageAsyncV2(_unused, path) {
+      const rel = norm(path);
+      // ⚠️ 匹配要同时容忍正/反斜杠、且**不能要求前导斜杠**：
+      //    主题给的 INTRO_DIR 是 THEME_ROOT + "assets\\intro\\"，norm() 之后是 `assets/intro/…`
+      //    —— 第一版写成 /\/assets\/intro\// 就没匹配上，限流等于没做（实测峰值并发仍是 6）。
+      return /assets[\\/]intro[\\/]/i.test(rel) ? introGate(() => imageReady(rel)) : imageReady(rel);
+    },
     LoadImageAsync(path, onDone) { const img = imageFor(norm(path)); queueMicrotask(() => onDone && onDone(img)); return img; },
     Effect(clsid) {
       const fx = { Clsid: String(clsid || '').toUpperCase(), __input: null, __m: null, values: {} };
@@ -613,6 +624,19 @@
     const h = imageFor(rel);
     if (!h || h.__ready || h.__failed) return Promise.resolve(h);
     return new Promise((res) => { h.__onReady.push(res); setTimeout(() => res(h), 15000); });
+  }
+  // 开场影片帧的并发闸门（上限 2）：见 d2d.LoadImageAsyncV2 的说明
+  let INTRO_ACTIVE = 0;
+  const INTRO_WAIT = [];
+  function introGate(fn) {
+    return new Promise((resolve) => {
+      const run = () => {
+        INTRO_ACTIVE++;
+        const next = () => { INTRO_ACTIVE--; const n = INTRO_WAIT.shift(); if (n) n(); };
+        Promise.resolve(fn()).then((v) => { next(); resolve(v); }, () => { next(); resolve(null); });
+      };
+      if (INTRO_ACTIVE < 2) run(); else INTRO_WAIT.push(run);
+    });
   }
 
   /* ================================================ fb / plman / utils -- */

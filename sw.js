@@ -35,8 +35,14 @@ self.addEventListener('install', (e) => {
       }
     } catch (err) { /* 拿不到就用内置的兜底清单 */ }
     const c = await caches.open(SHELL);
-    // 逐个 add：单个失败不能拖垮整个安装（链路差时很常见）
-    await Promise.all(SHELL_LIST.map((u) => c.add(new Request(u, { cache: 'reload' })).catch(() => { })));
+    // 逐个抓：单个失败不能拖垮整个安装（链路差时很常见）。
+    // ⚠️ 也要**重试** —— 这里是最该重试的地方：安装没抓到的文件，就是"下次打开仍然要联网"的文件。
+    await Promise.all(SHELL_LIST.map(async (u) => {
+      try {
+        const r = await fetchRetry(new Request(u, { cache: 'reload' }), 3);
+        if (r && r.status === 200) await c.put(u, r.clone());
+      } catch (err) { /* 这次没抓到就算了，运行时还会再补 */ }
+    }));
     self.skipWaiting();
   })());
 });
@@ -96,18 +102,37 @@ async function mediaResponse(req) {
 /* ------------------------------------------------------------------ 通用策略 */
 const withTimeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))]);
 
+// ⚠️⚠️ 关键修复：这台机器所在网络是"**逐连接掷骰子**" —— anycast 会把每条新连接送到不同机房
+//    （实测同一域名几分钟内落到 PDX/LAX/MAD/BOS；两个主机名同一刻能在不同大洲）。
+//    所以失败的单位是"连接"，不是"请求"：一条连接踩雷，它上面复用的整批资源全挂
+//    —— 用户看到的就是 "/panel.html 可能暂时无法连接"。**重试等于重新掷一次骰子**，
+//    命中好机房的概率很高，这比"减少请求数"更直接。所有网络取数统一走这里。
+async function fetchRetry(req, tries = 3, timeoutMs = 0) {
+  let lastErr;
+  for (let i = 0; i < tries; i++) {
+    try {
+      const p = fetch(req);
+      const r = timeoutMs ? await withTimeout(p, timeoutMs) : await p;
+      if (r && r.status < 500) return r;                  // 4xx 是确定答案，不重试
+      lastErr = new Error('status ' + (r && r.status));
+    } catch (e) { lastErr = e; }
+    if (i < tries - 1) await new Promise((res) => setTimeout(res, i === 0 ? 300 : 800));
+  }
+  throw lastErr || new Error('fetch failed');
+}
+
 async function cacheFirst(req, cacheName) {
   const cache = await caches.open(cacheName);
   const hit = await cache.match(req, { ignoreSearch: false });
   if (hit) return hit;
-  const net = await fetch(req);
+  const net = await fetchRetry(req);
   if (net && net.status === 200 && req.method === 'GET') cache.put(req, net.clone()).catch(() => { });
   return net;
 }
 async function swr(req, cacheName) {
   const cache = await caches.open(cacheName);
   const hit = await cache.match(req);
-  const updating = fetch(req).then((net) => {
+  const updating = fetchRetry(req).then((net) => {
     if (net && net.status === 200) cache.put(req, net.clone()).catch(() => { });
     return net;
   }).catch(() => null);
@@ -118,7 +143,7 @@ async function swr(req, cacheName) {
 async function networkFirst(req, cacheName, timeoutMs) {
   const cache = await caches.open(cacheName);
   try {
-    const net = await withTimeout(fetch(req), timeoutMs);
+    const net = await fetchRetry(req, 3, timeoutMs);
     if (net && net.status === 200) cache.put(req, net.clone()).catch(() => { });
     return net;
   } catch (err) {
