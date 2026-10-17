@@ -18,8 +18,9 @@ compatibility_date = "2026-10-11"
 [assets]
 directory = "../dist"
 binding = "ASSETS"
-# 只让 demo 音乐进 Worker（自己实现 Range）；其余请求不调用脚本。
-run_worker_first = ["/musiclab/*"]
+# 只让 demo 音乐进 Worker（自己实现 Range）+ 歌词翻译的白名单代理（/api/tr）。
+# 其余请求不调用脚本（静态资源免费且不限量）。
+run_worker_first = ["/musiclab/*", "/api/tr"]
 # 404-page：不存在的路径返回静态 404，不调用 Worker 脚本 —— 扫描器刷 /\.env 之类路径零成本。
 not_found_handling = "404-page"
 

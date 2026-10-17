@@ -1,13 +1,16 @@
 {
- "uiLang": "en",
- "scheme": "archive",
- "mode": "dark",
- "view": "archive",
- "archiveLayout": "array",
- "archiveSort": "artist",
- "archiveGroup": "genre",
- "caseSkin": "white",
- "archiveUnit": "albums",
- "archiveSel": "{\"key\":\"miracle milk|c:\\\\music\\\\miracle milk\"}",
- "seed": 1
+  "uiLang": "en",
+  "scheme": "archive",
+  "mode": "dark",
+  "view": "archive",
+  "archiveLayout": "array",
+  "archiveSort": "artist",
+  "archiveGroup": "genre",
+  "caseSkin": "white",
+  "archiveUnit": "albums",
+  "archiveSel": "{\"key\":\"miracle milk|c:\\\\music\\\\miracle milk\"}",
+  "seed": 1,
+  "lyricsTarget": "zh-CN",
+  "lyricsNetease": true,
+  "lyricsTranslate": false
 }

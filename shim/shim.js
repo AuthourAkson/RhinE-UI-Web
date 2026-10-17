@@ -1557,6 +1557,69 @@
 
   function report(type, data) { try { parent.postMessage({ __rhine: 1, id: CFG.id, type, data }, '*'); } catch (e) { } }
 
+  /* ------------------------------------- Windows 脚本兼容层（ActiveXObject）--
+   * 主题是 foobar2000（Windows 脚本环境）的移植，有三处用了 ActiveXObject：
+   *   lib/translate.js  MSXML2.XMLHTTP  —— **歌词翻译**（原版英文歌词下面那行中文就靠它：
+   *                                       从网易云取听众翻译的 tlyric；Windows 是中文时默认开）
+   *   lib/i18n.js       WScript.Shell   —— 读系统语言（网页版由宿主提供）
+   *   lib/update.js     WScript.Shell / MSXML2.XMLHTTP —— 自更新（网页版没有意义，禁掉）
+   *
+   * 浏览器里当然没有 ActiveX，于是主题的翻译一进来就 catch 失败 → 歌词永远只有原文 ✗。
+   * 这里补一个**最小兼容层**：
+   *   · MSXML2.XMLHTTP → 浏览器 XHR；**只允许翻译相关主机**，且请求改走同源 /api/tr
+   *     （Worker 里的白名单 CORS 代理 —— 浏览器直连 music.163.com 会被 CORS 拦掉）。
+   *   · WScript.Shell → ExpandEnvironmentStrings 原样返回、Run 什么都不做（自更新安静失效）。
+   *   · 其它 ProgID 一律抛错（保持"不存在"的语义）。
+   */
+  try {
+    const TR_HOSTS = ['music.163.com', 'api.mymemory.translated.net', 'fanyi-api.baidu.com', 'api-free.deepl.com', 'api.deepl.com'];
+    window.ActiveXObject = function ActiveXObject(name) {
+      const n = String(name || '').toLowerCase();
+      if (n === 'wscript.shell') {
+        return {
+          ExpandEnvironmentStrings: (s) => String(s == null ? '' : s),   // 没有这些环境变量，原样返回
+          Run: () => { },                                               // 不执行任何外部程序/打开链接
+          RegRead: () => '',
+        };
+      }
+      if (n === 'msxml2.xmlhttp' || n === 'msxml2.xmlhttp.6.0') {
+        const x = {
+          readyState: 0, status: 0, statusText: '', responseText: '', responseXML: null, onreadystatechange: null,
+          __m: 'GET', __u: '', __h: {},
+          open(m, u) { x.__m = String(m || 'GET').toUpperCase(); x.__u = String(u || ''); x.readyState = 1; },
+          setRequestHeader(k, v) { x.__h[k] = v; },
+          getAllResponseHeaders() { return ''; },
+          getResponseHeader() { return null; },
+          abort() { x.__abort = true; },
+          send(body) {
+            const fail = () => {
+              if (x.__abort) return;
+              x.readyState = 4; x.status = 0; x.responseText = '';
+              try { x.onreadystatechange && x.onreadystatechange(); } catch (e) { }
+            };
+            let u = null;
+            try { u = new URL(x.__u); } catch (e) { u = null; }
+            // 非翻译主机的请求（例如主题的自更新检查）直接失败，避免副作用
+            if (!u || !TR_HOSTS.includes(u.hostname)) { setTimeout(fail, 0); return; }
+            const url = '/api/tr?u=' + encodeURIComponent(u.toString());
+            const init = { method: x.__m, headers: x.__h, cache: 'no-store' };
+            if (x.__m !== 'GET' && x.__m !== 'HEAD') init.body = body || '';
+            fetch(url, init)
+              .then(async (r) => {
+                if (x.__abort) return;
+                x.status = r.status; x.statusText = r.statusText; x.responseText = await r.text();
+                x.readyState = 4;
+                try { x.onreadystatechange && x.onreadystatechange(); } catch (e) { }
+              })
+              .catch(fail);
+          },
+        };
+        return x;
+      }
+      throw new Error('ActiveXObject not available in browser: ' + name);
+    };
+  } catch (e) { /* 极老浏览器也不能因此中断面板加载 */ }
+
   /* ================================================ 加载（含 include） -- */
 
   function definePanelGlobals() {
@@ -1572,17 +1635,53 @@
      *    （中文系统 → "zh-CN" → i18n.js 的 systemLang() 得到 zh-CN → 默认中文）。
      */
     g.ActiveXObject = function ActiveXObject(progId) {
-      if (!/WScript\.Shell/i.test(String(progId))) throw new Error('ActiveXObject 不支持: ' + progId);
-      const lang = () => (navigator.languages && navigator.languages[0]) || navigator.language || 'en';
-      return {
-        RegRead(key) {
-          const k = String(key).toLowerCase();
-          if (k.indexOf('preferreduilanguages') >= 0) return lang();   // 主题会 split(/[,\s]/)[0]
-          if (k.indexOf('localename') >= 0) return lang();
-          throw new Error('未实现的注册表项: ' + key);
-        },
-        RegWrite() { }, ExpandEnvironmentStrings(s) { return s; }, Run() { }, Popup() { },
-      };
+      const id = String(progId || '');
+      // ① WScript.Shell：主题 i18n.js 用它读注册表拿 Windows 显示语言（中文系统 → zh-CN）
+      if (/WScript\.Shell/i.test(id)) {
+        const lang = () => (navigator.languages && navigator.languages[0]) || navigator.language || 'en';
+        return {
+          RegRead(key) {
+            const k = String(key).toLowerCase();
+            if (k.indexOf('preferreduilanguages') >= 0) return lang();   // 主题会 split(/[,\s]/)[0]
+            if (k.indexOf('localename') >= 0) return lang();
+            throw new Error('未实现的注册表项: ' + key);
+          },
+          RegWrite() { }, ExpandEnvironmentStrings(s) { return s; }, Run() { }, Popup() { },
+        };
+      }
+      // ② MSXML2.XMLHTTP：主题 lib/translate.js 用它取歌词翻译。
+      //    ⚠️⚠️ 这一段以前**没有**（这里只允许 WScript.Shell，其余直接抛错）→ 翻译一进来就 catch 失败
+      //    → 歌词永远只有原文（用户反馈"下面没有中文"）。现在改成走同源 /api/tr 的**白名单代理**
+      //    （Worker 里实现，浏览器直连 music.163.com 会被 CORS 拦），并只放行翻译相关主机。
+      if (/MSXML2\.XMLHTTP/i.test(id)) {
+        const TR_HOSTS = ['music.163.com', 'api.mymemory.translated.net', 'fanyi-api.baidu.com', 'api-free.deepl.com', 'api.deepl.com'];
+        const x = {
+          readyState: 0, status: 0, statusText: '', responseText: '', responseXML: null, onreadystatechange: null,
+          __m: 'GET', __u: '', __h: {}, __abort: false,
+          open(m, u) { x.__m = String(m || 'GET').toUpperCase(); x.__u = String(u || ''); x.readyState = 1; },
+          setRequestHeader(k, v) { x.__h[k] = v; },
+          getAllResponseHeaders() { return ''; },
+          getResponseHeader() { return null; },
+          abort() { x.__abort = true; },
+          send(body) {
+            const done = (st, txt) => {
+              if (x.__abort) return;
+              x.readyState = 4; x.status = st; x.responseText = txt || '';
+              try { x.onreadystatechange && x.onreadystatechange(); } catch (e) { }
+            };
+            let u = null;
+            try { u = new URL(x.__u); } catch (e) { u = null; }
+            if (!u || !TR_HOSTS.includes(u.hostname)) { setTimeout(() => done(0, ''), 0); return; }   // 别的主机（如自更新）安静失败
+            const init = { method: x.__m, headers: x.__h, cache: 'no-store' };
+            if (x.__m !== 'GET' && x.__m !== 'HEAD') init.body = body || '';
+            fetch('/api/tr?u=' + encodeURIComponent(u.toString()), init)
+              .then(async (r) => done(r.status, await r.text()))
+              .catch(() => done(0, ''));
+          },
+        };
+        return x;
+      }
+      throw new Error('ActiveXObject 不支持: ' + progId);
     };
     g.DT_SINGLE = DT.SINGLELINE | DT.NOPREFIX | DT.VCENTER;
     g.DT_CENTER_SINGLE = g.DT_SINGLE | DT.CENTER;

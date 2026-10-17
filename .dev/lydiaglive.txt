@@ -1,0 +1,33 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/lyrics-diag-live.mjs
+{
+ "SYSTEM_LANG": "zh-CN",
+ "trSettings": {
+  "target": "zh-CN",
+  "community": true,
+  "machine": false,
+  "provider": "mymemory"
+ },
+ "TR_state": "",
+ "hasHandle": true,
+ "lyrics": {
+  "lines": 130,
+  "source": "LRC",
+  "langs": 1,
+  "synced": true
+ },
+ "steps": {
+  "targetOff": false,
+  "noL": false,
+  "langsGt1": false,
+  "noHandle": false,
+  "sameLang": {
+   "src": "en",
+   "target": "zh-CN",
+   "same": false
+  },
+  "community": true,
+  "targetZh": true,
+  "sourceIsNE": false
+ }
+}
+[chrome-run] 已关闭无头 Chrome

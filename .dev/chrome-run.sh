@@ -20,9 +20,11 @@ kill_mine() {
 trap 'kill_mine; echo "[chrome-run] 已关闭无头 Chrome"' EXIT
 
 kill_mine   # 先清掉可能残留的上一次
+# ⚠️ --mute-audio 必须有：测试会播放音乐，无头 Chrome 若不静音会用**用户的音箱**出声
+#    （用户反馈过"一直开着歌很吵"）。另外 --autoplay-policy 让播放无需手势，测试才跑得通。
 "$CHROME" --headless=new --remote-debugging-port=$PORT --user-data-dir="$PROFILE" \
   --window-size=1600,1000 --no-first-run --no-default-browser-check \
-  --autoplay-policy=no-user-gesture-required about:blank >/dev/null 2>&1 &
+  --mute-audio --autoplay-policy=no-user-gesture-required about:blank >/dev/null 2>&1 &
 
 for i in $(seq 1 40); do
   if curl -s -o /dev/null "http://127.0.0.1:$PORT/json/version" 2>/dev/null; then break; fi

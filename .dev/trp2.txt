@@ -1,0 +1,12 @@
+[chrome-run] 无头 Chrome 就绪（端口 9226），开始跑：.dev/tr-probe.mjs
+=== ① shim 的 ActiveXObject 兼容层是否存在 ===
+typeof=function  trHttp=function  neteaseFetch=function
+
+=== ② 直接用 MSXML2 发一次网易云搜索（走兼容层 + /api/tr）===
+{"阶段":"开始","状态":200,"长度":4859,"开头":"{\"result\":{\"songs\":[{\"no\":11,\"copyright\":0,\"fee\":1,\"privilege\":{\"flag\":4,\"code\":0,\"dlLevel\":\"none\",\"subp\":1,\"fl\":0,\"fee\""}
+
+=== ③ 直接 fetch 同源代理（绕开兼容层，验证 Worker 路由）===
+HTTP 200  6333 字节  含tlyric=true
+
+控制台错误: 0 []
+[chrome-run] 已关闭无头 Chrome

@@ -18,9 +18,58 @@
  */
 const AUDIO_PREFIX = '/musiclab/';
 
+/* --------------------------------------------------- 歌词翻译：白名单 CORS 代理 --
+ * 主题 lib/translate.js 用 ActiveXObject("MSXML2.XMLHTTP") 取翻译（原版是 foobar2000 的 Windows 脚本环境），
+ * 浏览器里既没有 ActiveX 也不能跨域，所以 shim 把请求指到本 Worker 的同源路径 /api/tr?u=<原 URL>。
+ *
+ * ⚠️ 安全：这**不是**开放代理 —— 只允许下列翻译相关主机，其余一律 403。
+ *    （否则任何人都能拿它当免费代理/跳板。）
+ */
+const TR_ALLOW = [
+  'music.163.com',                 // 网易云：听众上传的中文翻译（原版默认来源）
+  'api.mymemory.translated.net',   // MyMemory（免费、无需 key）
+  'fanyi-api.baidu.com',           // 百度翻译（用户自己的 APP ID + key）
+  'api-free.deepl.com',            // DeepL 免费版 key
+  'api.deepl.com',
+];
+async function translationProxy(req, url) {
+  const target = url.searchParams.get('u');
+  if (!target) return new Response('missing u', { status: 400 });
+  let t;
+  try { t = new URL(target); } catch (e) { return new Response('bad u', { status: 400 }); }
+  if (!/^https?:$/.test(t.protocol) || !TR_ALLOW.includes(t.hostname)) {
+    return new Response('host not allowed', { status: 403 });
+  }
+  const headers = new Headers();
+  for (const h of ['content-type', 'authorization', 'accept']) {
+    const v = req.headers.get(h);
+    if (v) headers.set(h, v);
+  }
+  // 网易云对没有 Referer 的请求不友好；UA 用真实浏览器的（Workers 默认 UA 可能被拒）
+  headers.set('referer', t.origin + '/');
+  headers.set('user-agent', req.headers.get('user-agent') || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36');
+  const init = { method: req.method === 'POST' ? 'POST' : 'GET', headers };
+  if (init.method === 'POST') init.body = await req.arrayBuffer();
+  let r;
+  try {
+    r = await fetch(t.toString(), init);
+  } catch (e) {
+    return new Response('upstream failed: ' + (e && e.message), { status: 502, headers: { 'access-control-allow-origin': '*' } });
+  }
+  const out = new Headers();
+  for (const h of ['content-type', 'content-length', 'content-disposition']) {
+    const v = r.headers.get(h);
+    if (v) out.set(h, v);
+  }
+  out.set('access-control-allow-origin', '*');
+  out.set('cache-control', 'no-store');
+  return new Response(r.body, { status: r.status, headers: out });
+}
+
 export default {
   async fetch(req, env) {
     const url = new URL(req.url);
+    if (url.pathname === '/api/tr') return translationProxy(req, url);
     if (req.method !== 'GET' && req.method !== 'HEAD') return env.ASSETS.fetch(req);
     if (!url.pathname.startsWith(AUDIO_PREFIX)) return env.ASSETS.fetch(req);
 
