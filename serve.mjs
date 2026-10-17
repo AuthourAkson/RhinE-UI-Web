@@ -221,6 +221,47 @@ const server = http.createServer((req, res) => {
   }
   if (pathname === '/__rebuild') { cache = null; res.writeHead(200); return res.end('ok'); }
 
+  /* ----------------------------------------- 歌词翻译：本地开发用的白名单代理 --
+   * 线上由 Cloudflare Worker 的 /api/tr 提供（worker/src/worker.js）。
+   * 本地启动器（node serve.mjs）没有 Worker，不补这一段的话主题的翻译请求会 404 →
+   * 启动器里打开时歌词永远没有中文（用户实测："网页上可以了，启动器打开的不行"）。
+   * ⚠️ 与线上同一套白名单：**不是开放代理**，只转发翻译相关主机。
+   */
+  if (pathname === '/api/tr') {
+    const TR_ALLOW = ['music.163.com', 'api.mymemory.translated.net', 'fanyi-api.baidu.com', 'api-free.deepl.com', 'api.deepl.com'];
+    let t = null;
+    try { t = new URL(url.searchParams.get('u') || ''); } catch (e) { t = null; }
+    if (!t || !/^https?:$/.test(t.protocol) || !TR_ALLOW.includes(t.hostname)) {
+      res.writeHead(t ? 403 : 400, { 'Content-Type': 'text/plain; charset=utf-8' });
+      console.log(`  [api/tr] 拒绝: ${t ? t.hostname : (url.searchParams.get('u') || '(空)')}`);
+      return res.end('host not allowed');
+    }
+    const chunks = [];
+    req.on('data', (c) => chunks.push(c));
+    req.on('end', async () => {
+      const headers = { referer: t.origin + '/', 'user-agent': req.headers['user-agent'] || 'RhinE-dev' };
+      for (const h of ['content-type', 'authorization']) if (req.headers[h]) headers[h] = req.headers[h];
+      const init = { method: req.method === 'POST' ? 'POST' : 'GET', headers };
+      if (init.method === 'POST' && chunks.length) init.body = Buffer.concat(chunks);
+      try {
+        const r = await fetch(t.toString(), init);
+        const body = Buffer.from(await r.arrayBuffer());
+        console.log(`  [api/tr] ${t.hostname}${t.pathname.slice(0, 46)} → ${r.status} ${body.length} 字节`);
+        res.writeHead(r.status, {
+          'Content-Type': r.headers.get('content-type') || 'application/octet-stream',
+          'Cache-Control': 'no-store',
+          'Access-Control-Allow-Origin': '*',
+        });
+        res.end(body);
+      } catch (e) {
+        console.log(`  [api/tr] 失败: ${e.message}`);
+        res.writeHead(502, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.end('upstream failed: ' + e.message);
+      }
+    });
+    return;
+  }
+
   if (pathname === '/__music.json') {
     const lib = musicLibrary();
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
